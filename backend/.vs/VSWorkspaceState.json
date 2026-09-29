@@ -1,0 +1,10 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\BankStatementConverter.API",
+    "\\BankStatementConverter.Application",
+    "\\BankStatementConverter.Domain"
+  ],
+  "SelectedNode": "\\BankStatementConverter.API\\Program.cs",
+  "PreviewInSolutionExplorer": false
+}

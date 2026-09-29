@@ -1,0 +1,22 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.next/
+.env
+.env.*
+!.env.example
+**/.env.local
+uploads/
+.local/
+/tmp/
+/output/
+TestResults/
+**/__pycache__/
+data/snapshot/convertbank.dump
+data/snapshot/files/
+data/transfer/*.tmp
+*.user
+**/*.tsbuildinfo
+
+# Configuration locale contenant les secrets de developpement
+backend/BankStatementConverter.API/appsettings.Development.json

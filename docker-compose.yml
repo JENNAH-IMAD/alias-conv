@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      ConnectionStrings__Default: ${LOCAL_DATABASE_CONNECTION:?Set LOCAL_DATABASE_CONNECTION for PostgreSQL on host.docker.internal}
+      Jwt__Key: ${JWT_KEY:?Set JWT_KEY in .env}
+      Seed__AdminEmail: ${ADMIN_EMAIL:-}
+      Seed__AdminPassword: ${ADMIN_PASSWORD:-}
+      Seed__DemoData: ${DEMO_DATA:-false}
+      Database__AutoMigrate: "true"
+      Swagger__Enabled: "true"
+      Cors__Origins__0: ${FRONTEND_ORIGIN:-http://localhost:3002}
+      AllowedHosts: ${ALLOWED_HOSTS:-localhost;127.0.0.1;backend}
+      Storage__Root: /app/uploads
+    ports:
+      - "127.0.0.1:5081:8080"
+    volumes:
+      - ./uploads:/app/uploads
+  frontend:
+    build:
+      context: frontend/Import-pdf-excel-master
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5081/api}
+    ports:
+      - "127.0.0.1:3002:3000"
+    depends_on:
+      - backend

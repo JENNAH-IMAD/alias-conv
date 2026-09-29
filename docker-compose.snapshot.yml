@@ -1,0 +1,3 @@
+# Compatibility entry point: PostgreSQL runs on the PC, not in Docker.
+include:
+  - docker-compose.yml
