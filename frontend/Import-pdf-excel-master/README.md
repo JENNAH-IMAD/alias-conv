@@ -9,6 +9,27 @@ npm.cmd run build
 npm.cmd start
 ```
 
+Ou compiler puis demarrer en une commande : `npm.cmd run serve`.
+Arreter d'abord le serveur de developpement avec Ctrl+C pour liberer le port 3002.
+Pour les lancements suivants sans modification, `npm.cmd start` suffit.
+
+### Mesurer les temps de reponse
+
+Dans un autre terminal, serveur actif :
+
+```powershell
+npm.cmd run perf:local
+# Comparer avec un autre port :
+npm.cmd run perf:local -- http://localhost:3005
+```
+
+La mesure distingue le premier appel et la mediane de cinq appels suivants.
+Elle mesure la reponse HTTP complete, pas le rendu navigateur ni le ping reseau.
+Le message `Slow filesystem detected` concerne les acces disque pendant le
+developpement. Le mode production evite la compilation des pages pendant la
+navigation ; il ne repare pas les performances du disque. Ne pas supprimer
+`.next` a chaque lancement : cela force une nouvelle compilation.
+
 Ouvrir http://localhost:3002. Arreter `npm run dev` avec Ctrl+C avant
 `npm start` pour liberer le port. Le lancement copie les fichiers statiques dans
 le serveur standalone genere par Next.js. Refaire `npm run build` apres une

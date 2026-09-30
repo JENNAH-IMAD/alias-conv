@@ -183,7 +183,7 @@ export default function ClientWorkspacePage() {
   const client = clients.find(item => item.id === clientId);
 
   return (
-    <div className="ui-page">
+    <div className="ui-page workspace-page">
       <section className="ui-hero">
         <p className="ui-eyebrow">DOCUMENTS & ARCHIVES</p>
         <h1 className="ui-title">Espace clients</h1>

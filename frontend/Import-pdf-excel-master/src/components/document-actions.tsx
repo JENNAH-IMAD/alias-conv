@@ -22,7 +22,7 @@ export function DocumentPreview({clientId,item,kind,onClose,inline=false}:{clien
  {data.text!=null&&<Button variant="outline" aria-pressed={mode==='text'} onClick={()=>setMode('text')}>Texte brut</Button>}
  {kind==='standard'&&<Button variant="outline" aria-pressed={mode==='analysis'} onClick={()=>setMode('analysis')}>Analyse</Button>}
  </div>}
- {mode==='table'&&data?.rows&&<div className="max-h-[60vh] overflow-auto"><table className="conversion-table"><tbody>{data.rows.map((row,i)=><tr key={i}>{row.map((cell,j)=><td key={j} className="whitespace-pre-wrap min-w-28 max-w-lg break-words">{cell}</td>)}</tr>)}</tbody></table></div>}
+ {mode==='table'&&data?.rows&&<div className="document-table-scroll rounded-lg border border-border" tabIndex={0} role="region" aria-label="Tableau du fichier — défilement horizontal"><table className="document-table">{kind==='standard'&&<thead><tr>{data.rows[0]?.map((cell,j)=><th scope="col" key={j}>{cell}</th>)}</tr></thead>}<tbody>{(kind==='standard'?data.rows.slice(1):data.rows).map((row,i)=><tr key={i}>{row.map((cell,j)=><td key={j}>{cell}</td>)}</tr>)}</tbody></table></div>}
  {mode==='text'&&data?.text!=null&&<pre className="max-h-[60vh] overflow-auto rounded-lg bg-[var(--surface-alt)] p-4 text-xs">{data.text}</pre>}
  {mode==='analysis'&&data?.rows&&<ConversionReview transactions={standardTransactions(data.rows)} truncated={data.truncated}/>}
  {(mode==='text'?data?.textTruncated:data?.truncated)&&<p className="ui-description">{mode==='text'?'Aperçu limité à 100 000 caractères.':'Aperçu limité aux 500 premières lignes.'} Le téléchargement contient le fichier complet.</p>}
