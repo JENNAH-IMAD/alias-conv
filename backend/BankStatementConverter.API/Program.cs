@@ -1,86 +1,117 @@
-﻿using System.Text;
-using System.Threading.RateLimiting;
-using BankStatementConverter.API;
 using BankStatementConverter.Application;
 using BankStatementConverter.Domain;
 using BankStatementConverter.Infrastructure;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using BankStatementConverter.Infrastructure.Exports;
+using BankStatementConverter.Application.Exports;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
 using Npgsql;
+using BankStatementConverter.API;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+// Published server/desktop builds can read a configuration kept outside the application files.
+var externalConfig=Environment.GetEnvironmentVariable("ALIAS_CONFIG_FILE");
+if(!string.IsNullOrWhiteSpace(externalConfig))
+    builder.Configuration.AddJsonFile(Path.GetFullPath(externalConfig),optional:false,reloadOnChange:false).AddEnvironmentVariables().AddCommandLine(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole();
-var key = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrWhiteSpace(key) || Encoding.UTF8.GetByteCount(key) < 32) throw new InvalidOperationException("Configurez Jwt__Key ou Jwt:Key (32 octets minimum).");
-var connection = builder.Configuration.GetConnectionString("Default") ?? throw new InvalidOperationException("Configurez ConnectionStrings__Default.");
-builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connection));
-builder.Services.AddControllers(options => options.Filters.Add<PermissionFilter>());
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(o => {
-    o.SwaggerDoc("v1", new() { Title = "Bank Statement Converter", Version = "v1" });
-    o.AddSecurityDefinition("Bearer", new() { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "JWT" });
-    o.AddSecurityRequirement(new() { [new() { Reference = new() { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }] = Array.Empty<string>() });
+builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddControllers(o => o.Filters.Add<PermissionFilter>()).AddJsonOptions(o=>o.JsonSerializerOptions.NumberHandling=JsonNumberHandling.AllowReadingFromString);
+builder.Services.AddScoped<WorkspaceUserService>();
+builder.Services.AddScoped<WorkspaceCookieEvents>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
+{
+    o.Cookie.Name = "Alias.Session"; o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Strict;
+    o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; o.ExpireTimeSpan = TimeSpan.FromHours(8); o.SlidingExpiration = false;
+    o.EventsType = typeof(WorkspaceCookieEvents);
 });
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o => o.TokenValidationParameters = new() {
-    ValidateIssuer = true, ValidIssuer = builder.Configuration["Jwt:Issuer"], ValidateAudience = true, ValidAudience = builder.Configuration["Jwt:Audience"],
-    ValidateIssuerSigningKey = true, IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)), ValidateLifetime = true, ClockSkew = TimeSpan.FromSeconds(15)
-});
-builder.Services.AddScoped<UserManagementService>();
-builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options => {
-    options.Events = new JwtBearerEvents {
-        OnTokenValidated = async context => {
-            var principal = context.Principal;
-            if (!Guid.TryParse(principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id)) { context.Fail("Session invalide."); return; }
-            var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
-            var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, context.HttpContext.RequestAborted);
-            if (user == null || principal?.FindFirst("session_stamp")?.Value != UserManagementService.SessionStamp(user)) context.Fail("Session expirée. Reconnectez-vous.");
-        }
-    };
-});
-builder.Services.AddAuthorization();
-builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:3002"]).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("Content-Disposition")));
-builder.Services.AddRateLimiter(o => {
+builder.Services.AddAuthorization(o => o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+var keysDirectory = Path.Combine(Path.GetFullPath(builder.Configuration["Storage:Root"] ?? "uploads",builder.Environment.ContentRootPath), ".keys");
+Directory.CreateDirectory(keysDirectory);
+builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDirectory)).SetApplicationName("Alias.Workspace");
+builder.Services.AddRateLimiter(o =>
+{
     o.RejectionStatusCode = 429;
-    o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 20, Window = TimeSpan.FromMinutes(1) }));
-    o.AddPolicy("conversion", ctx => RateLimitPartition.GetConcurrencyLimiter(ctx.User.Identity?.Name ?? "unknown", _ => new() { PermitLimit = 2, QueueLimit = 0 }));
+    o.AddPolicy("authentication", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "local",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "Alias Convert PDF", Version = "v1" }));
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:3002"]).AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithExposedHeaders("Content-Disposition")));
 var maxBytes = builder.Configuration.GetValue<long>("Storage:MaxBytes", 20 * 1024 * 1024);
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = maxBytes + 1024 * 1024);
 builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = maxBytes + 1024 * 1024);
-builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
-builder.Services.AddScoped<IConversionService, ConversionService>();
 if (builder.Configuration.GetValue("ArchiveCleanup:Enabled", true)) builder.Services.AddHostedService<ArchiveCleanupWorker>();
-builder.Services.AddScoped<HistoryService>();
 builder.Services.AddScoped<BankService>();
+builder.Services.AddScoped<DocumentService>();
 builder.Services.AddSingleton<IFileStorageService, LocalFileStorage>();
-builder.Services.AddSingleton<IPdfExtractionService, PdfExtractionService>();
-builder.Services.AddSingleton<IBankStatementParser, DelimitedStatementParser>();
-builder.Services.AddSingleton<ITransactionExporter, Sage100Exporter>();
-builder.Services.AddSingleton<ITransactionExporter, SageX3Exporter>();
-builder.Services.AddSingleton<ITransactionExporter, CustomCsvExporter>();
 builder.Services.AddScoped(typeof(CatalogService<,,>));
-builder.Services.AddScoped<ICatalogDefinition<Client,ClientInput,ClientDto>,ClientDefinition>();
-builder.Services.AddScoped<ICatalogDefinition<BankAccount,BankAccountInput,BankAccountDto>,AccountDefinition>();
-builder.Services.AddScoped<ICatalogDefinition<BankStatementTemplate,StatementInput,StatementDto>,StatementDefinition>();
-builder.Services.AddScoped<ICatalogDefinition<ExportTemplate,ExportInput,ExportDto>,ExportDefinition>();
+builder.Services.AddScoped<ICatalogDefinition<Client, ClientInput, ClientDto>, ClientDefinition>();
+builder.Services.AddScoped<ICatalogDefinition<BankAccount, BankAccountInput, BankAccountDto>, AccountDefinition>();
+builder.Services.AddScoped<ICatalogDefinition<ExportTemplate, ExportInput, ExportDto>, ExportDefinition>();
+builder.Services.AddSingleton<IExportSourceResolver,ExportSourceResolver>();
+builder.Services.AddSingleton<ExportDateFormatter>();
+builder.Services.AddSingleton<ExportNumberFormatter>();
+builder.Services.AddSingleton<CsvExportWriter>();
+builder.Services.AddSingleton<DelimitedTextExportWriter>();
+builder.Services.AddSingleton<ExportFileNameBuilder>();
+builder.Services.AddSingleton<StatementValidator>();
+builder.Services.AddSingleton<IExportEngine,ExportEngine>();
+builder.Services.AddScoped<StatementImportService>();
+builder.Services.AddSingleton<ProcessingProgressStore>();
+builder.Services.AddScoped<RequestProcessingProgress>();
+builder.Services.AddScoped<IProcessingProgress>(s=>s.GetRequiredService<RequestProcessingProgress>());
+builder.Services.AddSingleton<StatementPdfExtractor>();
+builder.Services.AddSingleton<IStatementPdfExtractor>(s=>s.GetRequiredService<StatementPdfExtractor>());
+builder.Services.AddSingleton<OcrSettingsStore>();
+builder.Services.AddSingleton<OcrWorkQueue>();
+builder.Services.AddHttpClient("paddle-cloud",http=>http.Timeout=Timeout.InfiniteTimeSpan).RemoveAllLoggers();
+builder.Services.AddHttpClient("paddle-local",http=>http.Timeout=Timeout.InfiniteTimeSpan).RemoveAllLoggers();
+builder.Services.AddScoped<IPdfOcrClient>(s=> {
+    var settings=s.GetRequiredService<OcrSettingsStore>().Snapshot;
+    var clients=s.GetRequiredService<IHttpClientFactory>();
+    IPdfOcrClient client=settings.Provider switch {
+        "AI_STUDIO" => new PaddleAiStudioClient(clients.CreateClient("paddle-cloud"),builder.Configuration,s.GetRequiredService<StatementPdfExtractor>(),s.GetRequiredService<IProcessingProgress>(),settings),
+        "LOCAL" => new PaddleOcrClient(clients.CreateClient("paddle-local"),builder.Configuration,settings),
+        _ => throw new InvalidOperationException("Ocr:Provider doit être LOCAL ou AI_STUDIO.")
+    };
+    return new QueuedPdfOcrClient(client,s.GetRequiredService<OcrWorkQueue>(),s.GetRequiredService<IProcessingProgress>());
+});
+builder.Services.AddScoped<IAutomaticPdfExtraction,AutomaticPdfExtraction>();
+builder.Services.AddScoped<PdfStatementImportService>();
 var app = builder.Build();
-app.Use(async (ctx, next) => {
+app.Use(async (ctx, next) =>
+{
     try { await next(); }
-    catch (Exception ex) {
+    catch (Exception ex)
+    {
         var status = ex switch { AppException a => a.Status, DbUpdateException { InnerException: PostgresException { SqlState: "23505" or "23503" or "23001" } } => 409, BadHttpRequestException b => b.StatusCode, OperationCanceledException => 499, _ => 500 };
         var message = ex is AppException ? ex.Message : status == 409 ? "Doublon ou élément encore utilisé : modification impossible." : status == 413 ? "Fichier trop volumineux." : "Erreur serveur. Consultez les journaux.";
         app.Logger.Log(status >= 500 ? LogLevel.Error : LogLevel.Warning, ex, "Requête échouée : {Status}", status);
         if (!ctx.Response.HasStarted) { ctx.Response.StatusCode = status; await ctx.Response.WriteAsJsonAsync(new { title = message, status, traceId = ctx.TraceIdentifier }); }
     }
 });
-app.UseCors(); app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter();
+app.UseCors();
+// A custom header requires a CORS preflight, preventing cross-site HTML forms from making cookie-authenticated writes.
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.StartsWithSegments("/api") && !HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method) && !HttpMethods.IsOptions(ctx.Request.Method)
+        && ctx.Request.Headers["X-Alias-Request"] != "1")
+    { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsJsonAsync(new { title = "En-tête de sécurité manquant." }); return; }
+    await next();
+});
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
 if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("Swagger:Enabled")) { app.UseSwagger(); app.UseSwaggerUI(); }
 app.MapControllers();
-app.MapGet("/health", async (AppDbContext db) => await db.Database.CanConnectAsync() ? Results.Ok(new { status = "ok" }) : Results.StatusCode(503));
+app.MapGet("/health", async (AppDbContext db) => await db.Database.CanConnectAsync() ? Results.Ok(new { status = "ok" }) : Results.StatusCode(503)).AllowAnonymous();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

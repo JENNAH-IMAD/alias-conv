@@ -1,0 +1,85 @@
+Convertis le PDF source joint en un nouveau PDF reprenant la présentation du modèle joint, mais SANS colonne Référence.
+
+OBJECTIF
+Regrouper toutes les opérations du relevé dans un tableau continu, même si le PDF source comporte plusieurs pages ou des présentations différentes.
+
+Le document source reste la référence : aucune donnée ne doit être inventée ou modifiée arbitrairement.
+
+1. LECTURE COMPLÈTE
+- Analyse toutes les pages dans leur ordre.
+- Utilise le texte natif lorsqu’il existe et l’OCR pour les pages scannées.
+- Reconnais les champs à partir des titres, synonymes, positions et valeurs.
+- Rattache les suites de libellé à leur opération, y compris lorsqu’elles continuent sur la page suivante.
+- Ignore les en-têtes répétés, pieds de page et reports intermédiaires comme lignes d’opération.
+- Ne supprime pas des opérations identiques uniquement parce qu’elles se ressemblent.
+
+2. INFORMATIONS DU RELEVÉ
+Affiche au début :
+- Banque.
+- Titulaire.
+- Numéro de compte, en conservant les zéros initiaux.
+- Numéro du relevé, s’il existe.
+- Période complète.
+- Devise.
+
+3. TABLEAU DES OPÉRATIONS
+Utilise exactement cinq colonnes, dans cet ordre :
+
+Date opération | Date valeur | Libellé | Débit | Crédit
+
+- Ne crée aucune colonne Référence.
+- Conserve intégralement le libellé. Une référence déjà présente dans ce libellé doit rester dans le texte.
+- Utilise les dates au format JJ/MM/AAAA.
+- Distingue date d’opération et date de valeur ; ne remplace pas une date manquante par une autre.
+- Présente les montants avec deux décimales : 1 250,50.
+- Pour chaque opération, renseigne seulement Débit ou Crédit ; laisse l’autre cellule vide.
+- Si le PDF comporte une seule colonne de montants, détermine le sens grâce aux signes, indicateurs D/C et conventions du document. Signale toute ambiguïté.
+- Conserve l’ordre des opérations du PDF source.
+
+4. DEUX SOLDES UNIQUEMENT POUR TOUT LE RELEVÉ
+Affiche :
+- « Solde de départ du relevé » UNE SEULE FOIS, avant la première opération.
+- « Solde final du relevé » UNE SEULE FOIS, après la dernière opération.
+
+Le solde de départ correspond à l’ouverture de la période complète.
+Le solde final correspond à la clôture de cette même période.
+
+N’affiche aucun solde par opération, aucun solde de début ou de fin de page, et aucun report intermédiaire dans le PDF produit.
+
+Utilise les reports intermédiaires du document source uniquement pour les contrôles.
+Ne confonds pas solde disponible et solde final.
+Si un solde de départ ou final est absent ou illisible, indique « Non déterminé » ; ne le remplace pas par un report de page.
+
+5. MISE EN PAGE SUR PLUSIEURS PAGES
+- Produis un PDF natif avec texte sélectionnable et polices incorporées.
+- Utilise le format A4 paysage, un fond blanc et une police lisible.
+- Répète les cinq en-têtes de colonnes sur chaque page.
+- Conserve exactement les mêmes positions et largeurs de colonnes.
+- Une opération par ligne ; augmente la hauteur pour les libellés longs.
+- Ne coupe jamais une opération entre deux pages.
+- Numérote les pages « Page n / N ».
+- Sur les pages suivantes, utilise un en-tête compact permettant d’identifier le compte et la période.
+- Affiche les totaux débit et crédit UNE SEULE FOIS, après toutes les opérations, puis le solde final.
+- Les totaux des mouvements ne doivent pas inclure le solde de départ.
+- Ajoute discrètement « Copie structurée du document source ».
+
+6. CONTRÔLES
+- Vérifie que toutes les pages ont été traitées.
+- Compare chaque opération produite à la source : dates, libellé, montant et sens.
+- Vérifie qu’aucune opération n’a été oubliée, ajoutée ou dupliquée lors du regroupement des pages.
+- Compare les totaux calculés aux totaux imprimés, lorsqu’ils existent.
+- Pour la convention du compte client, vérifie :
+  Solde final = Solde de départ + Total crédits - Total débits.
+- Ne modifie jamais les données pour forcer cette égalité.
+- Vérifie visuellement l’absence de texte coupé ou de chevauchement.
+
+7. CAS PARTICULIERS
+- Si le fichier contient plusieurs relevés distincts, comptes ou devises, produis un document séparé pour chacun. Ne fusionne pas leurs soldes.
+- Si une donnée est incertaine, indique « À vérifier » et précise sa page source dans un rapport séparé.
+- Si le document n’est pas un relevé bancaire exploitable, explique pourquoi la conversion ne peut pas être réalisée fidèlement.
+
+LIVRABLES
+1. Le PDF converti, avec cinq colonnes et seulement deux soldes pour l’ensemble du relevé.
+2. Un bref rapport indiquant les pages traitées, le nombre d’opérations, les contrôles effectués et les éventuelles données à vérifier.
+
+Ne présente pas un résultat incertain comme entièrement validé.

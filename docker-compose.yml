@@ -1,29 +1,49 @@
 services:
+  ocr:
+    build:
+      context: .
+      dockerfile: services/ocr/Dockerfile
+    environment:
+      WEB_CONCURRENCY: ${OCR_WORKERS:-2}
+      OCR_CPU_THREADS: ${OCR_CPU_THREADS:-2}
+    volumes:
+      - ocr-models:/root/.paddlex
+    restart: unless-stopped
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     environment:
       ConnectionStrings__Default: ${LOCAL_DATABASE_CONNECTION:?Set LOCAL_DATABASE_CONNECTION for PostgreSQL on host.docker.internal}
-      Jwt__Key: ${JWT_KEY:?Set JWT_KEY in .env}
-      Seed__AdminEmail: ${ADMIN_EMAIL:-}
-      Seed__AdminPassword: ${ADMIN_PASSWORD:-}
       Seed__DemoData: ${DEMO_DATA:-false}
       Database__AutoMigrate: "true"
       Swagger__Enabled: "true"
       Cors__Origins__0: ${FRONTEND_ORIGIN:-http://localhost:3002}
       AllowedHosts: ${ALLOWED_HOSTS:-localhost;127.0.0.1;backend}
       Storage__Root: /app/uploads
+      Ocr__BaseUrl: http://ocr:8091
+      Ocr__Provider: ${Ocr__Provider:-LOCAL}
+      Ocr__CloudToken: ${Ocr__CloudToken:-}
+      Ocr__CloudModel: ${Ocr__CloudModel:-PP-OCRv6}
+      Ocr__TimeoutSeconds: "600"
+      Ocr__MaxConcurrentJobs: ${OCR_CONCURRENT_JOBS:-2}
+      Ocr__MaxQueuedJobs: ${OCR_QUEUED_JOBS:-32}
+      Ocr__QueueWaitSeconds: "600"
     ports:
       - "127.0.0.1:5081:8080"
     volumes:
-      - ./uploads:/app/uploads
+      - ./backend/BankStatementConverter.API/uploads:/app/uploads
+    depends_on:
+      - ocr
   frontend:
     build:
-      context: frontend/Import-pdf-excel-master
+      context: frontend
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5081/api}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        API_PROXY_URL: http://backend:8080
     ports:
-      - "127.0.0.1:3002:3000"
+      - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:3002:3000"
     depends_on:
       - backend
+volumes:
+  ocr-models:

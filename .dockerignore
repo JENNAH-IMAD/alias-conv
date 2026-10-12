@@ -3,7 +3,16 @@
 **/obj
 **/node_modules
 **/.next
+**/.next-desktop
+**/.next-runtime
+**/Alias.Runtime.json
 **/.git
+**/.vs
+tmp
+output
+**/test-results
+**/playwright-report
 **/.env*
+**/appsettings.Development.json
 uploads
 data/snapshot

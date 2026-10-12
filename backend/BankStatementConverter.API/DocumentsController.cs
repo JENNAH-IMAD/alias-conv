@@ -1,21 +1,43 @@
-﻿using System.Security.Claims;
 using BankStatementConverter.Application;
-using Microsoft.AspNetCore.Authorization;
+using BankStatementConverter.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 namespace BankStatementConverter.API;
-public class ImportPdfForm { public Guid ClientId { get; set; } public Guid BankAccountId { get; set; } public IFormFile File { get; set; } = null!; }
-public record ProcessPdfInput(Guid ProfileId, Guid ExportId);
-[ApiController, Authorize, Route("api/documents")]
-public class DocumentsController(IConversionService service) : ControllerBase
+
+public class DocumentForm
 {
-    [HttpPost, Consumes("multipart/form-data"), EnableRateLimiting("conversion")]
-    public async Task<IActionResult> Import([FromForm] ImportPdfForm input, CancellationToken ct) {
-        if(input.File==null) throw new AppException(400,"PDF requis.");
-        await using var stream=input.File.OpenReadStream();
-        var result=await service.ImportAsync(new(input.ClientId,input.BankAccountId,Guid.Empty,Guid.Empty,input.File.FileName,input.File.ContentType,input.File.Length,stream),Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!),ct);
-        return StatusCode(201,result);
+    public Guid ClientId { get; set; }
+    public Guid BankAccountId { get; set; }
+    public IFormFile? File { get; set; }
+}
+[ApiController, Route("api/documents")]
+public class DocumentsController(DocumentService service, AppDbContext db, IFileStorageService storage) : ControllerBase
+{
+    [HttpGet] public Task<PageResult<DocumentDto>> List(CancellationToken ct, Guid? clientId = null, int page = 1, int pageSize = 20)
+        => service.ListAsync(clientId, page, pageSize, ct);
+    [HttpGet("{id:guid}")]
+    public async Task<DocumentDto> Get(Guid id, CancellationToken ct) => await db.Documents.AsNoTracking().Where(x => x.Id == id)
+        .Select(DocumentService.Projection).SingleOrDefaultAsync(ct) ?? throw new AppException(404, "Document introuvable.");
+    [HttpPost, Consumes("multipart/form-data")]
+    public async Task<IActionResult> Import([FromForm] DocumentForm input, CancellationToken ct)
+    {
+        await using var source = input.File?.OpenReadStream();
+        var result = await service.SaveAsync(null, input.ClientId, input.BankAccountId, source, input.File?.FileName, input.File?.ContentType, input.File?.Length ?? 0, ct);
+        return CreatedAtAction(nameof(Get), new { id = result.Id }, result);
     }
-    [HttpPost("{id:guid}/process"), EnableRateLimiting("conversion")]
-    public Task<ConversionResult> Process(Guid id, ProcessPdfInput input, CancellationToken ct) => service.ProcessAsync(id,input.ProfileId,input.ExportId,Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!),ct);
+    [HttpPut("{id:guid}"), Consumes("multipart/form-data")]
+    public async Task<DocumentDto> Edit(Guid id, [FromForm] DocumentForm input, CancellationToken ct)
+    {
+        await using var source = input.File?.OpenReadStream();
+        return await service.SaveAsync(id, input.ClientId, input.BankAccountId, source, input.File?.FileName, input.File?.ContentType, input.File?.Length ?? 0, ct);
+    }
+    [HttpGet("{id:guid}/original")]
+    public async Task<IActionResult> Original(Guid id, CancellationToken ct, bool download = false)
+    {
+        var item = await db.Documents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new AppException(404, "Document introuvable.");
+        Response.Headers.CacheControl = "no-store";
+        return download ? File(storage.Open(item.StorageKey), "application/pdf", item.FileName) : File(storage.Open(item.StorageKey), "application/pdf");
+    }
+    [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    { await service.DeleteAsync(id, ct); return NoContent(); }
 }

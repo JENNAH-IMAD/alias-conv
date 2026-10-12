@@ -1,7 +1,11 @@
 **/bin/
 **/obj/
+**/.vs/
 **/node_modules/
 **/.next/
+**/.next-desktop/
+**/.next-runtime/
+**/Alias.Runtime.json
 .env
 .env.*
 !.env.example
@@ -20,3 +24,23 @@ data/transfer/*.tmp
 
 # Configuration locale contenant les secrets de developpement
 backend/BankStatementConverter.API/appsettings.Development.json
+
+# Livrables Windows reproductibles
+/desktop/stage/
+/desktop/builds/
+/desktop/dist/
+/desktop/test-runs/
+/desktop/downloads/
+
+/desktop/ui-preview/
+/desktop/preview-data/
+
+.fake
+
+# Sauvegardes et secrets des installations locales
+**/*.dump
+**/Postgres.Admin.json
+**/Server.json
+**/ocr.protected
+**/.keys/
+**/.settings/

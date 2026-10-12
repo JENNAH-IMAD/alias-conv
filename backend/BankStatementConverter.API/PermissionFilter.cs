@@ -1,60 +1,39 @@
-using System.Security.Claims;
-using BankStatementConverter.Application;
-using BankStatementConverter.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.EntityFrameworkCore;
-
 namespace BankStatementConverter.API;
 
-// Runs for every MVC endpoint, including uploads, previews and direct file downloads.
-public sealed class PermissionFilter(AppDbContext db) : IAsyncAuthorizationFilter
+public sealed class PermissionFilter : IAsyncAuthorizationFilter
 {
-    public static string[] Required(string controller, string action, string method, string? resource = null)
+    public Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
-        var write = method is not ("GET" or "HEAD");
-        string[] Module(string key) => write ? [key + ".read", key + ".write"] : [key + ".read"];
-        return controller switch
+        if (context.ActionDescriptor.EndpointMetadata.OfType<IAllowAnonymous>().Any()) return Task.CompletedTask;
+        var user = context.HttpContext.User;
+        if (user.Identity?.IsAuthenticated != true)
+        { context.Result = new UnauthorizedObjectResult(new { title = "Connectez-vous pour accéder à cet espace." }); return Task.CompletedTask; }
+        var action = (ControllerActionDescriptor)context.ActionDescriptor;
+        if (action.ControllerName == "Auth") return Task.CompletedTask;
+        if (action.ControllerName is "Users" or "OcrSettings")
+        { if (!user.IsInRole("Admin")) Deny(context); return Task.CompletedTask; }
+        var area = action.ControllerName switch
         {
-            "Auth" => [],
-            "Users" => ["admin.only"],
-            "Clients" or "ClientPhoto" => Module("clients"),
-            "Accounts" => Module("accounts"),
-            "Banks" when action == "Accounts" => ["banks.read", "accounts.read"],
-            "Banks" when action == "Profiles" => ["banks.read", "profiles.read"],
-            "Banks" or "BankLogo" => Module("banks"),
-            "Statements" => Module("profiles"),
-            "Exports" => Module("templates"),
-            "History" when action == "Dashboard" => ["dashboard.read"],
-            "History" => ["documents.read"],
-            "Documents" or "DocumentManagement" => ["documents.read", "documents.write"],
-            "Conversions" when action == "Download" => ["documents.read", "documents.export"],
-            "Conversions" => ["documents.read", "documents.write", "documents.export"],
-            "ClientWorkspace" when action == "Download" => ["documents.read", "documents.export"],
-            "ClientWorkspace" => ["documents.read"],
-            "CatalogDeletion" => resource switch
-            {
-                "clients" => ["clients.write", "accounts.write", "documents.write"],
-                "banks" => ["banks.write", "accounts.write", "profiles.write", "documents.write"],
-                "bank-accounts" => ["accounts.write", "documents.write"],
-                _ => ["admin.only"]
-            },
-            _ => ["admin.only"]
+            "Dashboard" => "dashboard", "Clients" or "ClientPhoto" => "clients", "Banks" or "BankLogo" => "banks",
+            "Accounts" => "accounts", "Exports" => "templates", "Documents" or "ClientWorkspace" or "StatementImports" or "StatementExports" or "ExtractionProfiles" => "documents",
+            "CatalogDeletion" => context.RouteData.Values["resource"]?.ToString(), _ => null
         };
+        var method = context.HttpContext.Request.Method;
+        if(action.ControllerName=="Banks" && action.ActionName=="Accounts") area="accounts";
+        var operation = HttpMethods.IsGet(method) ? "read" : "write";
+        if (action.ControllerName == "CatalogDeletion") operation = "write";
+        if(action.ControllerName=="CatalogDeletion" && !HttpMethods.IsGet(method) &&
+           (!user.HasClaim("permission","accounts.write") || !user.HasClaim("permission","documents.write")))
+        { Deny(context);return Task.CompletedTask; }
+        if (action.ControllerName == "StatementExports") operation = action.ActionName == "Download" || action.ActionName == "ArchivedDownload" ? "export" : "read";
+        if (action.ControllerName == "StatementImports" && action.ActionName is "StandardDownload" or "CompleteDownload") operation = "export";
+        if (action.ActionName == "Original" && bool.TryParse(context.HttpContext.Request.Query["download"],out var download) && download) operation = "export";
+        if (area == null || !user.HasClaim("permission", $"{area}.{operation}")) Deny(context);
+        return Task.CompletedTask;
     }
-
-    public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
-    {
-        if (context.ActionDescriptor is not ControllerActionDescriptor action || action.ControllerName == "Auth") return;
-        var principal = context.HttpContext.User;
-        if (principal.Identity?.IsAuthenticated != true) { context.Result = new UnauthorizedResult(); return; }
-        if (!Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id)) { context.Result = new UnauthorizedResult(); return; }
-        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, context.HttpContext.RequestAborted);
-        if (user == null) { context.Result = new UnauthorizedResult(); return; }
-        if (user.Role == "Admin") return;
-        var required = Required(action.ControllerName, action.ActionName, context.HttpContext.Request.Method, context.RouteData.Values["resource"]?.ToString());
-        var allowed = Permissions.Effective(user.Role, user.Permissions);
-        if (!required.All(allowed.Contains)) context.Result = new ObjectResult(new { title = "Vous ne disposez pas des permissions nécessaires pour cette action.", status = 403 }) { StatusCode = 403 };
-    }
+    private static void Deny(AuthorizationFilterContext context) => context.Result = new ObjectResult(new { title = "Vous n’avez pas la permission nécessaire pour cette action." }) { StatusCode = 403 };
 }

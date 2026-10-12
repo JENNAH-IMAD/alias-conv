@@ -1,0 +1,39 @@
+{
+  "bankName": "BANQUE DE DÉMONSTRATION",
+  "bankCode": "DEMO",
+  "accountNumber": "00000000001234",
+  "currency": "MAD",
+  "statementNumber": "EXEMPLE-202609",
+  "periodStart": "2026-09-01",
+  "periodEnd": "2026-09-30",
+  "openingBalance": "1000.00",
+  "closingBalance": "13374.50",
+  "totalDebit": "125.50",
+  "totalCredit": "12500.00",
+  "balanceConvention": "CREDIT_INCREASES",
+  "recordType": "1",
+  "transactions": [
+    {
+      "sequence": 1,
+      "date": "2026-09-01",
+      "valueDate": "2026-09-01",
+      "description": "VIREMENT CLIENT",
+      "debit": null,
+      "credit": "12500.00",
+      "amount": "12500.00",
+      "direction": "CREDIT",
+      "balance": "13500.00"
+    },
+    {
+      "sequence": 2,
+      "date": "2026-09-02",
+      "valueDate": "2026-09-02",
+      "description": "FRAIS BANCAIRES",
+      "debit": "125.50",
+      "credit": null,
+      "amount": "125.50",
+      "direction": "DEBIT",
+      "balance": "13374.50"
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+[
+  {
+    "code": "ARAB",
+    "name": "ARAB BANK MAROC",
+    "file": "ARAB.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/arab-bank.png",
+    "bytes": 7233
+  },
+  {
+    "code": "AWB",
+    "name": "ATTIJARIWAFA BANK",
+    "file": "AWB.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/atw.png",
+    "bytes": 8813
+  },
+  {
+    "code": "ABB",
+    "name": "AL BARID BANK",
+    "file": "ABB.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/albarid-bank.png",
+    "bytes": 8285
+  },
+  {
+    "code": "BP",
+    "name": "BANQUE CENTRALE POPULAIRE",
+    "file": "BP.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/bcp_logo.png",
+    "bytes": 8861
+  },
+  {
+    "code": "BMCE",
+    "name": "BANK OF AFRICA",
+    "file": "BMCE.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/boa_nouveau_logo.png",
+    "bytes": 4486
+  },
+  {
+    "code": "BMCI",
+    "name": "BANQUE MAROCAINE POUR LE COMMERCE ET L’INDUSTRIE",
+    "file": "BMCI.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/bmci.png",
+    "bytes": 7212
+  },
+  {
+    "code": "CAIXA",
+    "name": "CAIXA BANK S. A",
+    "file": "CAIXA.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/caixabank.png",
+    "bytes": 11586
+  },
+  {
+    "code": "CA",
+    "name": "CREDIT AGRICOLE DU MAROC",
+    "file": "CA.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/ca.png",
+    "bytes": 7172
+  },
+  {
+    "code": "CFG",
+    "name": "CFG BANK",
+    "file": "CFG.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/cfg.png",
+    "bytes": 7839
+  },
+  {
+    "code": "CDG",
+    "name": "CDG CAPITAL",
+    "file": "CDG.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/cdg_capital_logo.png",
+    "bytes": 6721
+  },
+  {
+    "code": "CIH",
+    "name": "CREDIT IMMOBILIER ET HOTELIER",
+    "file": "CIH.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/cih.png",
+    "bytes": 6400
+  },
+  {
+    "code": "CITI",
+    "name": "CITIBANK MAGHREB",
+    "file": "CITI.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/citi-bank.png",
+    "bytes": 7954
+  },
+  {
+    "code": "CDM",
+    "name": "CREDIT DU MAROC",
+    "file": "CDM.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/cdm.png",
+    "bytes": 7840
+  },
+  {
+    "code": "SABADELL",
+    "name": "SABADEL",
+    "file": "SABADELL.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/sabadell.png",
+    "bytes": 6533
+  },
+  {
+    "code": "SAHAM",
+    "name": "SAHAM BANK",
+    "file": "SAHAM.jpg",
+    "url": "https://www.sgfg.ma/sites/default/files/2026-09/Saham-bank.jpg",
+    "bytes": 7147
+  },
+  {
+    "code": "UMB",
+    "name": "UNION MAROCAINE DES BANQUES",
+    "file": "UMB.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/umb.png",
+    "bytes": 8461
+  },
+  {
+    "code": "ASSAFA",
+    "name": "BANK ASSAFA",
+    "file": "ASSAFA.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/bank_assafa.png",
+    "bytes": 26344
+  },
+  {
+    "code": "AKHDAR",
+    "name": "AL AKHDAR BANK",
+    "file": "AKHDAR.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/akhdar_bank.png",
+    "bytes": 10501
+  },
+  {
+    "code": "ALKARAM",
+    "name": "BANK AL KARAM",
+    "file": "ALKARAM.jpg",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/bank%20al%20karam_n.jpg",
+    "bytes": 10001
+  },
+  {
+    "code": "ALYOUSR",
+    "name": "BANK AL YOUSR",
+    "file": "ALYOUSR.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/Bank_Al_Yousr.png",
+    "bytes": 7824
+  },
+  {
+    "code": "UMNIA",
+    "name": "UMNIA BANK ",
+    "file": "UMNIA.png",
+    "url": "https://www.sgfg.ma/sites/default/files/banks/Umnia_Bank.png",
+    "bytes": 28934
+  },
+  {
+    "code": "SGMB",
+    "name": "Societe Generale",
+    "file": "SGMB.png",
+    "url": "https://www.societegenerale.com/sites/default/files/image/2023-04/logo-societe-generale.png",
+    "bytes": 14389
+  }
+]

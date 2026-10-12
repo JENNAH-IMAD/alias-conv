@@ -1,0 +1,426 @@
+.access-page {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  background: var(--background);
+  color: var(--foreground);
+}
+.access-story {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+  padding: clamp(32px, 6vw, 96px);
+  background: linear-gradient(145deg, var(--card), var(--muted));
+  border-right: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+.access-story:after {
+  content: '';
+  position: absolute;
+  width: 450px;
+  height: 450px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  right: -300px;
+  bottom: -150px;
+  box-shadow:
+    0 0 0 45px color-mix(in srgb, var(--primary) 3%, transparent),
+    0 0 0 90px color-mix(in srgb, var(--primary) 2%, transparent);
+  pointer-events: none;
+}
+.access-story > svg,
+.access-loading > svg {
+  width: 155px;
+  height: auto;
+}
+.access-story h1 {
+  font-size: clamp(30px, 3.5vw, 52px);
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.045em;
+}
+.access-story > p {
+  max-width: 440px;
+  line-height: 1.8;
+  color: var(--muted-foreground);
+}
+.access-features {
+  display: grid;
+  gap: 18px;
+  margin-top: 12px;
+}
+.access-features span,
+.access-story > small {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.access-features svg {
+  width: 20px;
+  color: var(--primary);
+}
+.access-story > small {
+  margin-top: 35px;
+  color: var(--muted-foreground);
+}
+.access-form-panel {
+  display: grid;
+  align-items: center;
+  padding: 64px 28px;
+  position: relative;
+}
+.access-theme {
+  position: absolute;
+  right: 28px;
+  top: 24px;
+}
+.access-form {
+  width: min(100%, 420px);
+  margin: auto;
+}
+.access-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--muted);
+  color: var(--primary);
+  margin-bottom: 24px;
+}
+.access-form h2 {
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  margin: 12px 0;
+}
+.access-form > p {
+  line-height: 1.7;
+}
+.access-form label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+.access-checkbox {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px !important;
+  color: var(--muted-foreground);
+}
+.access-submit {
+  margin-top: 25px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--action);
+  color: var(--action-foreground);
+  height: 46px;
+  border-radius: 12px;
+  font-weight: 650;
+}
+.access-submit:disabled {
+  opacity: 0.6;
+}
+.access-loading {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  background: var(--background);
+  color: var(--foreground);
+}
+.team-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.team-stat {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.team-stat > svg {
+  color: var(--primary);
+  padding: 10px;
+  box-sizing: content-box;
+  background: var(--muted);
+  border-radius: 12px;
+}
+.team-stat strong {
+  font-size: 25px;
+  display: block;
+}
+.team-stat small {
+  color: var(--muted-foreground);
+}
+.team-table {
+  overflow: auto;
+}
+.team-table table {
+  width: 100%;
+  min-width: 720px;
+  text-align: left;
+  border-collapse: collapse;
+}
+.team-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.team-table td {
+  padding: 18px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.team-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.team-person > span {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--muted);
+  color: var(--primary);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+}
+.team-person small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted-foreground);
+}
+.permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.permission-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.permission-group h3 {
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: 12px;
+}
+.permission-group label {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 12px;
+  margin-top: 10px;
+  color: var(--muted-foreground);
+}
+.permission-group input {
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+.workspace-profile {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.workspace-client-selector {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.workspace-client-choice {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+  font-size: 13px;
+}
+.workspace-client-selector .workspace-profile {
+  flex: 1;
+  min-width: 200px;
+}
+.workspace-client-selector .workspace-profile h2 {
+  font-size: 16px;
+}
+.workspace-client-selector .workspace-profile p {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.workspace-client-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--muted);
+  color: var(--primary);
+  font-weight: 750;
+  font-size: 20px;
+}
+.workspace-profile h2 {
+  font-size: 19px;
+  font-weight: 700;
+}
+.workspace-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  flex-wrap: wrap;
+}
+.workspace-tabs button {
+  padding: 10px 15px;
+  border-radius: 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.workspace-tabs button[aria-selected='true'] {
+  background: var(--muted);
+  color: var(--primary);
+  font-weight: 650;
+}
+.client-archive-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.client-archive-card {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.client-archive-card h3 {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.client-archive-card p {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+}
+.client-archive-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.client-archive-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: auto;
+}
+.archive-file-list {
+  display: grid;
+  gap: 14px;
+}
+.archive-file {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+}
+.archive-file > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.archive-file > header > svg {
+  color: var(--primary);
+}
+.archive-file strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.archive-file p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-top: 5px;
+}
+.archive-code {
+  max-height: 55vh;
+  overflow: auto;
+  white-space: pre;
+  font-family: monospace;
+  font-size: 12px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+.workspace-identity {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--muted);
+  font-size: 12px;
+}
+.workspace-identity strong {
+  display: block;
+  margin-bottom: 3px;
+}
+@media (max-width: 850px) {
+  .access-page {
+    grid-template-columns: 1fr;
+  }
+  .access-story {
+    padding: 30px;
+    gap: 18px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .access-story h1 {
+    font-size: 28px;
+  }
+  .access-features {
+    display: none;
+  }
+  .access-story > small {
+    margin-top: 0;
+  }
+  .access-form-panel {
+    padding: 66px 24px 36px;
+  }
+  .team-summary {
+    grid-template-columns: 1fr;
+  }
+  .team-stat {
+    padding: 14px;
+  }
+  .team-stat strong {
+    font-size: 22px;
+  }
+  .client-archive-grid {
+    grid-template-columns: 1fr;
+  }
+  .permission-grid {
+    grid-template-columns: 1fr;
+  }
+}

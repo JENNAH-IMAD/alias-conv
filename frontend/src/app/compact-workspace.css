@@ -1,0 +1,616 @@
+/* Shared density: keep the page hierarchy, give the content more room. */
+.app-shell .topbar {
+  height: 56px;
+  padding-inline: 22px;
+}
+.app-shell .main-content {
+  padding: 18px 22px;
+}
+.app-shell .ui-page,
+.app-shell .conversion-page {
+  gap: 16px;
+}
+.app-shell .ui-hero,
+.app-shell .conversion-hero {
+  padding: 18px 22px;
+  border-radius: 16px;
+}
+.app-shell .page-header {
+  gap: 16px;
+}
+.app-shell .page-header-copy {
+  gap: 12px;
+  align-items: center;
+}
+.app-shell .page-header-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+}
+.app-shell .ui-title {
+  font-size: clamp(23px, 1.9vw, 28px);
+  margin-top: 3px;
+}
+.app-shell .ui-description {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.app-shell .main-content .ui-card {
+  padding: 18px;
+  border-radius: 16px;
+}
+.app-shell .catalog-grid,
+.app-shell .client-archive-grid {
+  gap: 14px;
+}
+.app-shell .dashboard-metrics,
+.app-shell .dashboard-lower {
+  gap: 16px;
+}
+.app-shell .ui-input {
+  min-height: 38px;
+  padding-block: 7px;
+}
+.app-shell .ui-button {
+  min-height: 36px;
+}
+.app-shell .nav-link {
+  min-height: 40px;
+  padding-block: 8px;
+}
+.app-shell .nav-caption {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+.app-shell .app-footer {
+  padding-block: 8px;
+  font-size: 11px;
+}
+.app-shell .conversion-hero h1 {
+  font-size: clamp(23px, 2vw, 28px);
+}
+.app-shell .conversion-hero-steps {
+  margin-top: 12px;
+}
+.app-shell .conversion-empty {
+  min-height: 360px;
+  padding: 30px 20px;
+}
+.app-shell .conversion-empty-illustration {
+  margin-bottom: 20px;
+}
+.app-shell .account-statement-groups {
+  gap: 16px;
+}
+.app-shell .account-group-heading {
+  padding-block: 10px;
+}
+.app-shell .workspace-client-selector {
+  gap: 16px;
+}
+
+/* Import: one compact form, with the file alongside the account fields. */
+.app-shell .conversion-import-page {
+  width: 100%;
+  max-width: 1200px;
+  padding: 22px;
+}
+.app-shell .import-page-header {
+  margin-bottom: 16px;
+  gap: 14px;
+  align-items: flex-start;
+}
+.app-shell .import-page-header h1 {
+  font-size: 26px;
+  margin-bottom: 4px;
+}
+.app-shell .import-page-header .conversion-eyebrow {
+  margin-bottom: 5px;
+}
+.app-shell .import-page-header .muted {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.import-page-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.app-shell .conversion-import-page .import-journey {
+  margin: 0;
+  padding: 0 0 12px;
+}
+.app-shell .conversion-import-page .import-journey li > span {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+}
+.import-page-fields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.import-page-fields[hidden] {
+  display: none;
+}
+.app-shell .conversion-import-page .import-dropzone {
+  min-height: 144px;
+  margin: 0;
+  padding: 16px;
+  gap: 8px;
+}
+.app-shell .conversion-import-page .import-upload-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+}
+.app-shell .conversion-import-page .import-upload-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.app-shell .conversion-import-page .import-dropzone strong {
+  font-size: 14px;
+}
+.app-shell .conversion-import-page .import-dropzone > span:not(.import-upload-icon),
+.app-shell .conversion-import-page .import-dropzone small {
+  font-size: 12px;
+}
+.app-shell .conversion-import-page .import-bank-fields {
+  gap: 12px;
+}
+.app-shell .conversion-import-page .ui-input {
+  margin-top: 5px;
+}
+.app-shell .conversion-import-page .import-assignment-flat {
+  padding-top: 12px;
+}
+.app-shell .conversion-import-page .assignment-heading {
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.app-shell .conversion-import-page .import-assignment-flat > p {
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.app-shell .conversion-import-page .conversion-clean {
+  padding: 10px 12px;
+  font-size: 12px;
+  margin: 0;
+}
+.app-shell .conversion-import-page .import-footer {
+  position: static;
+  margin: 0;
+  padding: 12px 0 0;
+  gap: 12px;
+}
+.app-shell .conversion-import-page .import-footer > p {
+  max-width: none;
+}
+@media (min-width: 1100px) {
+  .import-page-fields {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    column-gap: 24px;
+  }
+  .import-page-fields > .import-dropzone {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+  .import-page-fields > .import-bank-fields {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .import-page-fields > .import-assignment-flat {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .import-page-fields > .conversion-clean {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 851px) and (max-height: 760px) {
+  .app-shell .main-content {
+    padding-block: 12px;
+  }
+  .app-shell .conversion-import-page {
+    padding: 18px;
+  }
+  .app-shell .import-page-header {
+    margin-bottom: 12px;
+  }
+  .import-page-form,
+  .import-page-fields {
+    gap: 12px;
+  }
+  .app-shell .conversion-import-page .import-footer {
+    padding-top: 10px;
+  }
+}
+@media (max-width: 850px) {
+  .app-shell .topbar {
+    padding-inline: 14px;
+  }
+  .app-shell .main-content {
+    padding: 16px;
+  }
+  .app-shell .page-header-actions {
+    margin-left: 0;
+  }
+  .app-shell .ui-hero,
+  .app-shell .conversion-hero {
+    padding: 18px;
+  }
+  .app-shell .conversion-import-page {
+    padding: 18px;
+  }
+  .app-shell .conversion-import-page .import-page-header {
+    flex-direction: row;
+  }
+  .app-shell .import-page-header h1 {
+    font-size: 23px;
+  }
+}
+@media (max-width: 480px) {
+  .app-shell .main-content {
+    padding: 12px;
+  }
+  .app-shell .conversion-import-page {
+    padding: 16px;
+  }
+  .app-shell .conversion-import-page .import-page-header {
+    flex-wrap: wrap;
+  }
+  .app-shell .conversion-import-page .import-page-header > div {
+    flex: 1 1 190px;
+  }
+  .app-shell .conversion-import-page .import-footer > div {
+    width: 100%;
+  }
+  .app-shell .page-header-copy {
+    gap: 10px;
+  }
+}
+
+/* Four clear steps, with the selected export model checked before download. */
+.conversion-flow-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 0 16px;
+  margin: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--border);
+}
+.conversion-flow-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.conversion-flow-steps li > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.conversion-flow-steps .current {
+  color: var(--primary);
+  font-weight: 650;
+}
+.conversion-flow-steps .current > span {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+.conversion-flow-steps .complete > span {
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  color: var(--primary);
+}
+.conversion-flow-header {
+  grid-column: 1 / -1;
+}
+.conversion-flow-header .conversion-flow-steps {
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+.app-shell .conversion-model-step {
+  width: 100%;
+  max-width: 1100px;
+  margin-inline: auto;
+  display: grid;
+  gap: 20px;
+}
+.model-step-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.model-step-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--card));
+}
+.model-step-heading h1 {
+  font-size: clamp(21px, 2vw, 27px);
+  font-weight: 700;
+  margin: 5px 0;
+}
+.model-step-heading > div > p:last-child {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.model-step-document {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 13px;
+}
+.model-step-document strong {
+  overflow-wrap: anywhere;
+}
+.model-step-document span {
+  color: var(--muted-foreground);
+  margin-left: auto;
+}
+.model-step-fields {
+  border: 1px solid var(--border);
+  padding: 14px;
+  border-radius: 12px;
+}
+.model-step-fields > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.model-step-fields > div > span,
+.model-step-fields p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.model-step-fields ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  list-style: none;
+  padding: 12px 0;
+}
+.model-step-fields li {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 12px;
+  background: var(--card);
+}
+.model-step-fields li span {
+  color: var(--primary);
+}
+.model-step-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.model-step-footer p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.guided-model-summary h3 {
+  font-weight: 650;
+  margin-block: 6px;
+}
+.guided-model-summary button {
+  margin-top: 12px;
+}
+.guided-result-next {
+  display: grid;
+  gap: 12px;
+}
+@media (max-width: 650px) {
+  .conversion-flow-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .model-step-heading {
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .model-step-icon {
+    width: 40px;
+    height: 40px;
+  }
+  .model-step-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .model-step-document span {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+.guided-document-summary {
+  padding: 13px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--foreground);
+}
+.conversion-guided .conversion-diagnostics ul {
+  max-height: 180px;
+  overflow: auto;
+}
+.conversion-guided.stage-4 > .conversion-review-layout {
+  display: none;
+}
+.conversion-guided.stage-4 > .conversion-export-panel {
+  max-width: 1050px;
+  width: 100%;
+  margin-inline: auto;
+}
+.conversion-guided.stage-4 .conversion-export-steps {
+  grid-template-columns: minmax(200px, 0.8fr) minmax(0, 1.4fr);
+  align-items: start;
+}
+.conversion-guided.stage-4 .export-step-download {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.conversion-guided.stage-4 .export-step-review {
+  grid-column: 1;
+}
+.conversion-guided.stage-4 .conversion-download-note {
+  margin-block: 6px;
+}
+.conversion-guided.stage-4 .conversion-export-actions {
+  grid-template-columns: 1fr;
+}
+.conversion-guided.stage-4 .conversion-export-actions > button:first-child {
+  display: none;
+}
+@media (min-width: 1100px) {
+  .conversion-workspace.conversion-guided.stage-3 {
+    grid-template-columns: minmax(0, 1fr) 310px;
+    align-items: start;
+  }
+  .conversion-guided.stage-3 > .conversion-export-panel {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 16px;
+    position: sticky;
+    top: 12px;
+  }
+  .conversion-guided.stage-3 .conversion-export-steps {
+    grid-template-columns: 1fr;
+  }
+  .conversion-guided.stage-3 .conversion-review-layout {
+    grid-column: 1;
+    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .conversion-guided.stage-3 .statement-pdf-panel {
+    position: static;
+  }
+  .conversion-guided.stage-3 .conversion-main {
+    gap: 12px;
+  }
+  .conversion-guided.stage-3 .conversion-export-header {
+    margin-bottom: 12px;
+  }
+  .conversion-guided.stage-3 .export-step {
+    padding: 12px;
+  }
+}
+@media (max-width: 650px) {
+  .conversion-guided.stage-4 .conversion-export-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .conversion-guided.stage-4 .export-step-download,
+  .conversion-guided.stage-4 .export-step-review {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
+
+.conversion-guided {
+  gap: 12px;
+}
+.conversion-guided .conversion-next-step {
+  display: none;
+}
+.conversion-guided .conversion-document-card {
+  padding: 0;
+}
+.conversion-guided .conversion-table-heading {
+  padding: 12px 16px;
+}
+.conversion-guided .conversion-preview-warning {
+  padding: 10px 14px;
+  font-size: 12px;
+}
+.conversion-guided .export-preview-switch {
+  padding: 10px 14px;
+  gap: 8px;
+}
+.conversion-guided .conversion-validation-card p {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-block: 6px;
+}
+.conversion-guided .conversion-confirm {
+  margin-block: 12px;
+  font-size: 12px;
+  gap: 8px;
+}
+.conversion-guided .export-step-title {
+  margin-bottom: 10px;
+}
+.conversion-guided .guided-result-next {
+  gap: 8px;
+}
+.conversion-guided .guided-result-next > button {
+  white-space: normal;
+  line-height: 1.4;
+}
+.guided-pdf-toggle {
+  width: fit-content;
+  max-width: 100%;
+}
+@media (min-width: 1100px) {
+  .conversion-guided.stage-3 .conversion-export-header {
+    display: none;
+  }
+  .conversion-guided.stage-3 .conversion-export-steps {
+    gap: 12px;
+  }
+}
+
+/* Compact result with the imported PDF beside the table. */
+@media (min-width: 1100px) {
+  .conversion-workspace.conversion-guided.stage-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .conversion-guided.stage-3 .conversion-review-layout {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+    gap: 14px;
+  }
+  .conversion-guided.stage-3 > .conversion-export-panel {
+    display: none;
+  }
+  .conversion-guided.stage-3 .statement-pdf-panel {
+    position: sticky;
+    top: 12px;
+    align-self: start;
+  }
+  .conversion-guided.stage-3 .guided-pdf-toggle {
+    display: none;
+  }
+}
+.conversion-guided.stage-3 .conversion-table-scroll {
+  max-height: 65vh;
+}
+.conversion-guided.stage-3 .export-preview-switch {
+  padding: 10px 14px;
+  gap: 8px;
+  flex-wrap: wrap;
+}

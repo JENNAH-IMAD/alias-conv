@@ -1,11 +1,10 @@
-﻿using BankStatementConverter.Application;
+using BankStatementConverter.Application;
 using BankStatementConverter.Infrastructure;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 namespace BankStatementConverter.API;
 
-[ApiController, Authorize, Route("api/clients/{id:guid}/photo")]
+[ApiController, Route("api/clients/{id:guid}/photo")]
 public class ClientPhotoController(AppDbContext db) : ControllerBase
 {
     public const int MaxBytes = 2 * 1024 * 1024;

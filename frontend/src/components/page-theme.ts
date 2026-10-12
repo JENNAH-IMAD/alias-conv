@@ -1,0 +1,15 @@
+export const pageTheme = {
+  page: 'ui-page',
+  hero: 'ui-hero',
+  chip: 'ui-eyebrow',
+  title: 'ui-title',
+  button: 'button-primary',
+  card: 'ui-card',
+  row: 'ui-row',
+  rowLabel: 'muted',
+  rowValue: 'ui-value',
+  tag: 'ui-tag',
+  meta: 'muted text-sm',
+  itemLabel: 'muted',
+  itemValue: 'ui-value',
+} as const;
