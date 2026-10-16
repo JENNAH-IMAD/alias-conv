@@ -11,5 +11,10 @@ public abstract class CatalogController<TEntity, TInput, TDto>(CatalogService<TE
     [HttpGet("{id:guid}")] public Task<TDto> Get(Guid id, CancellationToken ct) => service.GetAsync(id, ct);
     [HttpPost] public virtual async Task<ActionResult<TDto>> Create(TInput input, CancellationToken ct) => StatusCode(201, await service.SaveAsync(null, input, ct));
     [HttpPut("{id:guid}")] public virtual Task<TDto> Update(Guid id, TInput input, CancellationToken ct) => service.SaveAsync(id, input, ct);
-    [HttpDelete("{id:guid}")] public virtual async Task<IActionResult> Delete(Guid id, CancellationToken ct) { await service.DeleteAsync(id, ct); return NoContent(); }
+    [HttpDelete("{id:guid}")]
+    public virtual async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        await service.DeleteAsync(id, ct);
+        return NoContent();
+    }
 }

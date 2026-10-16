@@ -1,0 +1,637 @@
+.conversion-table-scroll {
+  isolation: isolate;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.conversion-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.conversion-table.movements-table {
+  table-layout: fixed;
+  min-width: 1340px;
+}
+.conversion-table.movements-table[data-extra-columns='true'] {
+  min-width: 2120px;
+}
+.movements-table .movement-description-column {
+  width: auto;
+  min-width: 300px;
+}
+.conversion-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--surface-alt);
+  box-shadow: 0 1px 0 var(--border);
+  padding: 14px 12px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.conversion-table tbody td {
+  padding: 12px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+}
+.conversion-table .conversion-money {
+  text-align: right;
+  white-space: nowrap;
+}
+.conversion-table .conversion-money .statement-cell-button {
+  text-align: right;
+}
+.conversion-table .statement-cell-button {
+  margin: 0;
+  padding: 5px 4px;
+  min-height: 30px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.conversion-table .statement-cell-button[data-kind='money'],
+.conversion-table .statement-cell-button[data-kind='date'],
+.conversion-table .statement-cell-button[data-kind='direction'] {
+  min-width: 0;
+}
+.conversion-table .statement-cell-button[data-multiline] {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.conversion-table .statement-cell-button[data-kind='text'] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.conversion-table .statement-order-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.statement-order-cell > span {
+  min-width: 24px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.conversion-table .statement-row-controls {
+  flex-wrap: nowrap;
+  margin: 0;
+  min-width: 0;
+  gap: 5px;
+}
+.conversion-table .statement-row-position {
+  display: block;
+  margin: 0;
+}
+.conversion-table .statement-row-position input {
+  width: 55px;
+  height: 30px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.conversion-table .row-drag-handle,
+.conversion-table .row-insert-button {
+  width: 28px;
+  height: 30px;
+  min-width: 28px;
+  padding: 0;
+}
+.conversion-table .row-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+.conversion-table .row-selection-cell {
+  width: 42px;
+  text-align: center;
+}
+.conversion-table input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  accent-color: var(--link);
+}
+.conversion-table.preview {
+  min-width: 850px;
+}
+.conversion-table.preview th:first-child,
+.conversion-table.preview td:first-child {
+  min-width: 185px;
+  white-space: nowrap;
+}
+.conversion-table.preview td:first-child .statement-row-controls {
+  margin-top: 0;
+}
+.conversion-table.preview td[data-cell-kind='money'] {
+  text-align: right;
+  white-space: nowrap;
+}
+.conversion-table.preview td {
+  max-width: 420px;
+  overflow-wrap: anywhere;
+}
+.pdf-view-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.pdf-view-note {
+  margin: 0;
+  padding: 12px 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.conversion-balances {
+  gap: 14px;
+  padding: 20px;
+}
+.conversion-balances > div {
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-alt);
+  min-width: 0;
+}
+.conversion-balances > div[data-direction='debit'] {
+  border-left: 3px solid #f59e0b;
+}
+.conversion-balances > div[data-direction='credit'] {
+  border-left: 3px solid #34d399;
+}
+.conversion-balances .balance-direction {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.conversion-balances strong {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(20px, 2vw, 30px);
+}
+.conversion-document-actions {
+  gap: 10px;
+  align-items: center;
+}
+.conversion-tabs button {
+  padding: 16px 18px;
+}
+.conversion-table.movements-table td {
+  font-size: 12px;
+}
+.statement-pdf-panel .pdf-view-switch {
+  background: var(--surface-alt);
+}
+.statement-pdf-panel .pdf-viewer-heading {
+  padding: 16px;
+}
+.statement-pdf-panel .pdf-viewer-toolbar {
+  gap: 8px;
+  padding: 12px 16px;
+}
+@media (max-width: 600px) {
+  .conversion-balances {
+    padding: 12px;
+    gap: 8px;
+  }
+  .conversion-balances > div {
+    padding: 12px;
+  }
+  .conversion-tabs button {
+    padding: 12px 10px;
+  }
+}
+.conversion-document-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  min-width: 0;
+}
+.conversion-document-actions > p {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: none;
+  margin: 0 0 4px;
+  line-height: 1.6;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.conversion-document-actions > button,
+.conversion-document-actions > a {
+  max-width: 100%;
+  white-space: normal;
+}
+.conversion-table.preview .conversion-preview-actions {
+  position: sticky;
+  right: 0;
+  min-width: 104px;
+  width: 104px;
+  background: var(--surface);
+  box-shadow: -1px 0 0 var(--border);
+}
+.conversion-table.preview thead .conversion-preview-actions {
+  z-index: 6;
+  background: var(--surface-alt);
+}
+.conversion-table.preview .conversion-preview-description {
+  min-width: 250px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.export-preview-switch {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.export-preview-switch > span {
+  flex: 1 0 100%;
+  line-height: 1.5;
+}
+.export-file-text {
+  min-height: 320px;
+  max-width: 100%;
+  font-family: ui-monospace, monospace;
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+
+/* Conversion review: compact summaries, readable issues and a stable toolbar. */
+.conversion-workspace {
+  gap: 16px;
+}
+.conversion-main {
+  min-width: 0;
+  gap: 16px;
+}
+.conversion-diagnostics {
+  padding: 18px 20px;
+  border-radius: 16px;
+}
+.conversion-diagnostics .conversion-section-heading {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.conversion-diagnostics .conversion-section-heading h3 {
+  font-size: 14px;
+  gap: 9px;
+}
+.conversion-diagnostics .conversion-section-heading > span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.conversion-workspace .conversion-diagnostics ul {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.conversion-workspace .conversion-diagnostics li {
+  padding: 12px 14px;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.conversion-diagnostics li.error {
+  background: color-mix(in srgb, #ef4444 5%, var(--surface));
+  border-left: 3px solid #ef4444;
+}
+.conversion-diagnostics li.warning {
+  background: color-mix(in srgb, #f59e0b 5%, var(--surface));
+  border-left: 3px solid #f59e0b;
+}
+.conversion-diagnostics .conversion-diagnostic-mark {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+}
+.conversion-diagnostics strong {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.conversion-diagnostics p {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.conversion-diagnostics small {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.conversion-diagnostics li > .conversion-text-action {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+  text-align: center;
+}
+.conversion-export-panel .conversion-tabs {
+  gap: 4px;
+  padding: 6px 12px 0;
+}
+.conversion-export-panel .conversion-tabs button {
+  border-radius: 10px 10px 0 0;
+  padding: 14px 16px;
+}
+.conversion-table-heading {
+  padding: 18px 20px 14px;
+  align-items: center;
+  gap: 12px;
+}
+.conversion-table-heading h3 {
+  font-size: 15px;
+}
+.conversion-table-heading p {
+  margin-top: 5px;
+  line-height: 1.5;
+  font-size: 12px;
+}
+.conversion-workspace .export-preview-switch {
+  padding: 0 20px 16px;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.export-preview-switch > button,
+.export-preview-switch > a {
+  min-height: 38px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+.export-preview-switch > button[aria-pressed] {
+  box-shadow: none;
+}
+.export-preview-switch > span {
+  padding-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.conversion-workspace .row-editor-toolbar {
+  padding: 14px 20px;
+  gap: 10px;
+  background: var(--surface-alt);
+}
+.row-editor-toolbar .row-editor-actions {
+  gap: 8px;
+}
+.row-editor-toolbar > p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.conversion-pagination {
+  padding: 14px 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+}
+.conversion-table-scroll {
+  border-top: 0;
+}
+@media (max-width: 760px) {
+  .conversion-diagnostics {
+    padding: 14px;
+  }
+  .conversion-diagnostics .conversion-section-heading {
+    flex-wrap: wrap;
+  }
+  .conversion-workspace .conversion-diagnostics li {
+    flex-wrap: wrap;
+    padding: 10px;
+    gap: 8px;
+  }
+  .conversion-diagnostics li > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .conversion-diagnostics li > .conversion-text-action {
+    margin-left: 30px;
+  }
+  .conversion-export-panel .conversion-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .conversion-export-panel .conversion-tabs button {
+    flex-shrink: 0;
+    padding: 12px 10px;
+    font-size: 12px;
+  }
+  .conversion-table-heading {
+    padding: 16px 14px 12px;
+  }
+  .conversion-workspace .export-preview-switch {
+    padding: 0 14px 14px;
+  }
+  .conversion-workspace .row-editor-toolbar {
+    padding: 12px 14px;
+  }
+}
+
+.statement-extract-panel {
+  padding: 16px;
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+.extract-filter-bar {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.extract-filter-bar > label {
+  flex: 1 1 280px;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 0;
+}
+.extract-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  margin: 12px 0;
+}
+.extract-totals dt {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.extract-totals dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.conversion-workspace .movement-filter-toolbar {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+.movement-filter-toolbar .extract-filter-bar {
+  margin-bottom: 0;
+}
+.movement-filter-toolbar .extract-totals {
+  margin: 2px 0;
+}
+.movement-saved-choice {
+  display: block;
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.conversion-type-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 8px 0 20px;
+  padding: 0;
+  border: 0;
+}
+.conversion-type-options legend {
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.conversion-type-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.conversion-type-options label.is-selected {
+  border-color: var(--primary);
+  background: var(--surface-alt);
+}
+.conversion-type-options input {
+  margin-top: 4px;
+  accent-color: #1769df;
+}
+.conversion-type-options strong,
+.conversion-type-options small {
+  display: block;
+}
+.conversion-type-options small {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+.conversion-type-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  width: min(100%, 880px);
+  margin: 20px auto;
+  text-align: left;
+}
+.conversion-type-cards article {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-alt);
+}
+.conversion-type-cards h3 {
+  font-size: 20px;
+  font-weight: 600;
+}
+.conversion-type-cards p {
+  min-height: 72px;
+  margin: 12px 0 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.conversion-workspace.is-extract-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+.workspace-document-tabs {
+  margin: 24px 0;
+}
+@media (max-width: 640px) {
+  .conversion-type-options,
+  .conversion-type-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .conversion-type-cards button {
+    width: 100%;
+    white-space: normal;
+  }
+}
+@media (min-width: 851px) and (max-height: 900px) {
+  .app-shell .conversion-import-page .conversion-type-options {
+    margin: 0;
+    gap: 12px;
+  }
+  .app-shell .conversion-import-page .conversion-type-options legend {
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .app-shell .conversion-import-page .conversion-type-options label {
+    padding: 10px 12px;
+  }
+  .app-shell .conversion-import-page .conversion-type-options small {
+    margin-top: 3px;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+  .app-shell .conversion-import-page .import-page-form {
+    gap: 8px;
+  }
+  .app-shell .conversion-import-page .import-page-header {
+    margin-bottom: 8px;
+  }
+  .app-shell .conversion-import-page .conversion-flow-steps {
+    padding-bottom: 10px;
+    margin-bottom: 0;
+  }
+}
+@media (min-width: 851px) and (max-height: 760px) {
+  .app-shell .conversion-import-page {
+    padding: 14px 18px;
+  }
+  .app-shell .conversion-import-page .import-page-form {
+    gap: 6px;
+  }
+  .app-shell .conversion-import-page .import-page-fields {
+    gap: 8px;
+  }
+  .app-shell .conversion-import-page .conversion-type-options legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .app-shell .conversion-import-page .conversion-type-options label {
+    padding: 8px 12px;
+  }
+  .app-shell .conversion-import-page .import-page-header {
+    margin-bottom: 6px;
+  }
+  .app-shell .conversion-import-page .import-page-header h1 {
+    font-size: 23px;
+  }
+  .app-shell .conversion-import-page .import-assignment-flat {
+    padding-top: 8px;
+  }
+  .app-shell .conversion-import-page .conversion-clean {
+    padding-block: 8px;
+  }
+}

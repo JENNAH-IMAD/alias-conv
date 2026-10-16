@@ -20,7 +20,11 @@ public class ArchiveCleanupWorker(IServiceScopeFactory scopes, ILogger<ArchiveCl
                 var storage = scope.ServiceProvider.GetRequiredService<IFileStorageService>();
                 foreach (var item in await db.PendingFileDeletions.OrderBy(x => x.CreatedAt).Take(100).ToListAsync(stoppingToken))
                 {
-                    try { storage.Delete(item.StorageKey); db.PendingFileDeletions.Remove(item); }
+                    try
+                    {
+                        storage.Delete(item.StorageKey);
+                        db.PendingFileDeletions.Remove(item);
+                    }
                     catch (IOException ex) { logger.LogWarning(ex, "Suppression de fichier à réessayer {Id}", item.Id); }
                     catch (UnauthorizedAccessException ex) { logger.LogWarning(ex, "Accès au fichier à réessayer {Id}", item.Id); }
                 }

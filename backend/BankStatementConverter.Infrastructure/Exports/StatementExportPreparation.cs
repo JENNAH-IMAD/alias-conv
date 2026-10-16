@@ -13,6 +13,7 @@ public static class StatementExportPreparation
     public static PdfStatementExtraction Complete(BankStatement statement, ExportTemplate template,
         IReadOnlyList<ExportError> diagnostics, PdfTextDocument? raw, StatementPdfExtractor normalizer, CancellationToken ct)
     {
+        statement = StatementAmounts.Normalize(statement);
         var prepared = raw == null ? new PdfStatementExtraction(statement, diagnostics) :
             PdfStatementMetadata.Complete(new(statement, diagnostics, raw), statement);
         var warnings = prepared.Warnings.ToList();
@@ -40,24 +41,39 @@ public static class StatementExportPreparation
             ct.ThrowIfCancellationRequested();
             var row = rows[index];
             var amount = Magnitude(row);
-            if (!amount.HasValue || row.Amount.HasValue && row.Amount != amount) continue;
+            if (!amount.HasValue || row.Amount.HasValue && row.Amount != amount)
+                continue;
             var direction = row.Debit.HasValue ? "DEBIT" : "CREDIT";
-            if (!string.IsNullOrWhiteSpace(row.Direction) && row.Direction != direction) continue;
+            if (!string.IsNullOrWhiteSpace(row.Direction) && row.Direction != direction)
+                continue;
             if (sources.Contains("Amount") && !row.Amount.HasValue)
             {
-                row = row with { Amount = amount };
+                row = row with
+                {
+                    Amount = amount
+                };
                 warnings.Add(Completed(row, "Amount", "Montant complété à partir de l’unique colonne débit ou crédit renseignée."));
             }
             if (sources.Contains("Direction") && string.IsNullOrWhiteSpace(row.Direction))
             {
-                row = row with { Direction = direction };
+                row = row with
+                {
+                    Direction = direction
+                };
                 warnings.Add(Completed(row, "Direction", "Sens complété à partir de l’unique colonne débit ou crédit renseignée."));
             }
             rows[index] = row;
         }
-        if (sources.Contains("Balance")) rows = CompleteRunningBalances(prepared.Statement, rows, warnings);
-        return prepared with { Statement = prepared.Statement with { Transactions = rows },
-            Warnings = warnings.DistinctBy(w => (w.Code, w.TransactionSequence, w.SourceField)).ToList() };
+        if (sources.Contains("Balance"))
+            rows = CompleteRunningBalances(prepared.Statement, rows, warnings);
+        return prepared with
+        {
+            Statement = prepared.Statement with
+            {
+                Transactions = rows
+            },
+            Warnings = warnings.DistinctBy(w => (w.Code, w.TransactionSequence, w.SourceField)).ToList()
+        };
     }
 
     private static StatementTransaction[] CompleteRunningBalances(BankStatement statement, StatementTransaction[] rows, List<ExportError> warnings)
@@ -68,24 +84,35 @@ public static class StatementExportPreparation
             || statement.BalanceConvention is not ("CREDIT_INCREASES" or "DEBIT_INCREASES")
             || rows.Any(r => !r.Date.HasValue || !Magnitude(r).HasValue)
             || rows.Zip(rows.Skip(1)).Any(pair => pair.First.Date > pair.Second.Date)
-            || new StatementValidator().Validate(statement with {Transactions=rows}).Errors.Count != 0) return rows;
+            || new StatementValidator().Validate(statement with
+            {
+                Transactions = rows
+            }).Errors.Count != 0)
+            return rows;
         try
         {
             var balance = statement.OpeningBalance.Value;
             var computed = new decimal[rows.Length];
-            for (var index=0; index<rows.Length; index++)
+            for (var index = 0; index < rows.Length; index++)
             {
-                var row=rows[index];
-                balance += statement.BalanceConvention=="CREDIT_INCREASES"
-                    ? (row.Credit ?? 0m)-(row.Debit ?? 0m) : (row.Debit ?? 0m)-(row.Credit ?? 0m);
-                computed[index]=balance;
-                if (row.Balance.HasValue && row.Balance!=balance) return rows;
+                var row = rows[index];
+                balance += statement.BalanceConvention == "CREDIT_INCREASES"
+                    ? (row.Credit ?? 0m) - (row.Debit ?? 0m) : (row.Debit ?? 0m) - (row.Credit ?? 0m);
+                computed[index] = balance;
+                if (row.Balance.HasValue && row.Balance != balance)
+                    return rows;
             }
-            if (balance!=statement.ClosingBalance) return rows;
-            return rows.Select((row,index) => {
-                if (row.Balance.HasValue) return row;
-                warnings.Add(Completed(row,"Balance","Solde progressif calculé depuis le solde initial et les mouvements, avec contrôle du solde final."));
-                return row with {Balance=computed[index]};
+            if (balance != statement.ClosingBalance)
+                return rows;
+            return rows.Select((row, index) =>
+            {
+                if (row.Balance.HasValue)
+                    return row;
+                warnings.Add(Completed(row, "Balance", "Solde progressif calculé depuis le solde initial et les mouvements, avec contrôle du solde final."));
+                return row with
+                {
+                    Balance = computed[index]
+                };
             }).ToArray();
         }
         catch (OverflowException) { return rows; }
@@ -99,7 +126,8 @@ public static class StatementExportPreparation
         for (var index = 0; index < extracted.Count; index++)
         {
             var candidate = extracted[index];
-            if (MatchAmount(candidate) is not { } amount) continue;
+            if (MatchAmount(candidate) is not { } amount)
+                continue;
             Add(byDescription, candidate.Description, amount, index);
             Add(byReference, candidate.Reference, amount, index);
         }
@@ -109,12 +137,15 @@ public static class StatementExportPreparation
         {
             ct.ThrowIfCancellationRequested();
             var row = current[index];
-            if (MatchAmount(row) is not { } amount) continue;
+            if (MatchAmount(row) is not { } amount)
+                continue;
             var key = !string.IsNullOrWhiteSpace(row.Reference) ? Text(row.Reference) : Text(row.Description);
             var lookup = !string.IsNullOrWhiteSpace(row.Reference) ? byReference : byDescription;
-            if (key.Length == 0 || !lookup.TryGetValue((key, amount), out var options)) continue;
+            if (key.Length == 0 || !lookup.TryGetValue((key, amount), out var options))
+                continue;
             var candidates = options.Where(i => Compatible(row, extracted[i])).Take(2).ToArray();
-            if (candidates.Length == 1) pairs.Add((index, candidates[0]));
+            if (candidates.Length == 1)
+                pairs.Add((index, candidates[0]));
         }
         var uniquelyUsed = pairs.GroupBy(pair => pair.Candidate).Where(group => group.Count() == 1).SelectMany(group => group);
         var result = current.ToArray();
@@ -153,8 +184,10 @@ public static class StatementExportPreparation
     private static void Add(Dictionary<(string, decimal), List<int>> lookup, string? value, decimal amount, int index)
     {
         var key = Text(value);
-        if (key.Length == 0) return;
-        if (!lookup.TryGetValue((key, amount), out var indices)) lookup[(key, amount)] = indices = [];
+        if (key.Length == 0)
+            return;
+        if (!lookup.TryGetValue((key, amount), out var indices))
+            lookup[(key, amount)] = indices = [];
         indices.Add(index);
     }
     private static bool Compatible(StatementTransaction row, StatementTransaction candidate) =>
@@ -166,7 +199,9 @@ public static class StatementExportPreparation
         && (string.IsNullOrWhiteSpace(row.Reference) || Text(row.Reference) == Text(candidate.Reference));
     private static bool Missing(StatementTransaction row, string source) => source switch
     {
-        "Date" => !row.Date.HasValue, "ValueDate" => !row.ValueDate.HasValue,
-        "Reference" => string.IsNullOrWhiteSpace(row.Reference), _ => string.IsNullOrWhiteSpace(row.Description)
+        "Date" => !row.Date.HasValue,
+        "ValueDate" => !row.ValueDate.HasValue,
+        "Reference" => string.IsNullOrWhiteSpace(row.Reference),
+        _ => string.IsNullOrWhiteSpace(row.Description)
     };
 }

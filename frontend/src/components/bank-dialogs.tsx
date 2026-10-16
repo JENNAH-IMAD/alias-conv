@@ -152,14 +152,9 @@ export function BankEditor({
           </p>
         )}
         <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onClose}
-            className="rounded-xl border border-current/20 px-4 py-2.5"
-          >
+          <Button type="button" disabled={busy} onClick={onClose} variant="outline">
             Annuler
-          </button>
+          </Button>
           <Button disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
         </div>
       </form>

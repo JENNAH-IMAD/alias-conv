@@ -4,6 +4,7 @@ using BankStatementConverter.Infrastructure.Exports;
 using Xunit;
 
 namespace BankStatementConverter.Tests;
+
 public class BmceNativeStatementTests
 {
     private static PdfTextBox Box(string text, double x, double y) => new(text, x, x + text.Length * 4, y - 5, y);
@@ -26,8 +27,11 @@ public class BmceNativeStatementTests
     public void OutlinedHeadersKeepDatesDirectionsContinuationsAndDebitOpeningBalance()
     {
         var s = Normalize(Document()).Statement;
-        Assert.Equal(3, s.Transactions.Count); Assert.Equal(-100m, s.OpeningBalance); Assert.Equal(65m, s.ClosingBalance);
-        Assert.Equal(35m, s.TotalDebit); Assert.Equal(200m, s.TotalCredit);
+        Assert.Equal(3, s.Transactions.Count);
+        Assert.Equal(-100m, s.OpeningBalance);
+        Assert.Equal(65m, s.ClosingBalance);
+        Assert.Equal(35m, s.TotalDebit);
+        Assert.Equal(200m, s.TotalCredit);
         Assert.Equal("VIREMENT\nCLIENT REFERENCE 123", s.Transactions[1].Description);
         Assert.Equal(new DateOnly(2026, 9, 2), s.Transactions[2].ValueDate);
         Assert.Equal(new DateOnly(2026, 8, 31), s.OpeningBalanceDate);
@@ -40,9 +44,13 @@ public class BmceNativeStatementTests
     [InlineData(1, 140, "10,00", "")]
     public void RejectsIncorrectReportsTotalsBalancesAndMissingAmounts(int page, double bottom, string before, string after)
     {
-        var d = Document(); var pages = d.Pages.ToArray();
-        pages[page] = pages[page] with {Boxes = pages[page].Boxes.Select(b => b.Bottom == bottom && b.Text == before ? b with {Text = after} : b).ToArray()};
-        Assert.Equal(422, Assert.Throws<AppException>(() => Normalize(d with {Pages = pages})).Status);
+        var d = Document();
+        var pages = d.Pages.ToArray();
+        pages[page] = pages[page] with
+        {
+            Boxes = pages[page].Boxes.Select(b => b.Bottom == bottom && b.Text == before ? b with { Text = after } : b).ToArray()
+        };
+        Assert.Equal(422, Assert.Throws<AppException>(() => Normalize(d with { Pages = pages })).Status);
     }
     [Fact]
     public void RecognizesBmceNameWhenWorkspaceUsesACustomBankCode()
@@ -54,6 +62,7 @@ public class BmceNativeStatementTests
     [Fact]
     public void RejectsOmittedPages()
     {
-        var d = Document(); Assert.Throws<AppException>(() => Normalize(d with {Pages = [d.Pages[0]]}));
+        var d = Document();
+        Assert.Throws<AppException>(() => Normalize(d with { Pages = [d.Pages[0]] }));
     }
 }

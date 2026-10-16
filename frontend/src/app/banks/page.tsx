@@ -2,7 +2,8 @@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ClientAvatar, ClientPhotoEditor } from '@/components/client-photo';
-import { Camera, Landmark, Plus, RefreshCw } from 'lucide-react';
+import { Camera, Landmark, Plus, RefreshCw, Pencil, Trash2, ArrowUpRight } from 'lucide-react';
+import { Pagination } from '@/components/ui/pagination';
 import { PageHeader } from '@/components/page-header';
 import { LoadState } from '@/components/ui/load-state';
 import { pageTheme } from '@/components/page-theme';
@@ -173,42 +174,47 @@ export default function BanksPage() {
                 />
                 <h2 className="text-base font-semibold text-foreground break-words">{bank.name}</h2>
               </div>
-              <span
-                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${'bg-success/10 text-[var(--success-text)] ring-1 ring-inset ring-success/20'}`}
-              >
-                {bank.status}
-              </span>
+              {bank.status && (
+                <span className={bank.status === 'Actif' ? 'status-positive' : 'ui-tag'}>
+                  {bank.status}
+                </span>
+              )}
             </div>
 
-            <div className={`space-y-3 text-sm ${theme.meta}`}>
-              <div className={theme.row}>
-                <span className={theme.rowLabel}>Clients</span>
-                <span className={theme.rowValue}>{bank.clients}</span>
+            <dl className="bank-card-statistics">
+              <div>
+                <dt>Code banque</dt>
+                <dd>{bank.code || '—'}</dd>
               </div>
-              <div className={theme.row}>
-                <span className={theme.rowLabel}>Code bancaire</span>
-                <span className={theme.rowValue}>{bank.code}</span>
+              <div>
+                <dt>Clients</dt>
+                <dd>{bank.clients ?? '—'}</dd>
               </div>
-              <div className={theme.row}>
-                <span className={theme.rowLabel}>Comptes</span>
-                <span className={theme.rowValue}>{bank.accounts}</span>
+              <div>
+                <dt>Comptes</dt>
+                <dd>{bank.accounts ?? '—'}</dd>
               </div>
-              <p className="line-clamp-2 break-words pt-1">
-                {bank.description || 'Aucune description.'}
-              </p>
-            </div>
-            <div className="mt-5 flex flex-wrap gap-2 border-t border-current/10 pt-4 text-sm">
-              <Button variant="outline" onClick={() => setDetails(bank)}>
-                Détails
+            </dl>
+            <p className="bank-card-description">{bank.description || 'Aucune description.'}</p>
+            <div className="catalog-card-actions bank-card-actions">
+              <Button
+                variant="outline"
+                onClick={() => setDetails(bank)}
+                className="catalog-main-action"
+              >
+                Détails <ArrowUpRight size={15} />
               </Button>
               {
                 <>
                   <Button
                     permission="banks.write"
                     variant="outline"
+                    size="icon"
+                    aria-label={`Modifier le logo de ${bank.name}`}
+                    title={bank.logoVersion ? 'Modifier le logo' : 'Ajouter un logo'}
                     onClick={() => setLogoBank(bank)}
                   >
-                    <Camera size={15} /> {bank.logoVersion ? 'Modifier le logo' : 'Ajouter un logo'}
+                    <Camera size={15} />
                   </Button>
                   <Button
                     permission="banks.write"
@@ -216,15 +222,18 @@ export default function BanksPage() {
                     className="accent-text"
                     onClick={() => setEditing(bank)}
                   >
-                    Modifier
+                    <Pencil size={15} /> Modifier
                   </Button>
                   <Button
                     permission="banks.write"
-                    variant="outline"
-                    className="danger-button"
+                    variant="danger"
+                    size="icon"
+                    className="catalog-delete-action"
+                    aria-label={`Supprimer ${bank.name}`}
+                    title="Supprimer la banque"
                     onClick={() => setDeleting(bank)}
                   >
-                    Supprimer
+                    <Trash2 size={16} />
                   </Button>
                 </>
               }
@@ -233,30 +242,14 @@ export default function BanksPage() {
         ))}
       </section>
       {data && (
-        <nav
-          aria-label="Pagination des banques"
-          className="flex flex-wrap items-center justify-between gap-4 text-sm"
-        >
-          <p>
-            {data.total} banque(s) · Page {page} sur {Math.max(1, Math.ceil(data.total / 20))}
-          </p>
-          <div className="flex gap-3">
-            <button
-              disabled={page === 1 || loading}
-              className="rounded-xl border border-current/20 px-4 py-2 disabled:cursor-not-allowed disabled:opacity-30"
-              onClick={() => setPage(page - 1)}
-            >
-              Précédent
-            </button>
-            <button
-              disabled={page * 20 >= data.total || loading}
-              className="rounded-xl border border-current/20 px-4 py-2 disabled:cursor-not-allowed disabled:opacity-30"
-              onClick={() => setPage(page + 1)}
-            >
-              Suivant
-            </button>
-          </div>
-        </nav>
+        <Pagination
+          label="Pagination des banques"
+          itemLabel="banque(s)"
+          page={page}
+          total={data.total}
+          loading={loading}
+          onChange={setPage}
+        />
       )}
     </div>
   );

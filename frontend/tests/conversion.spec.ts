@@ -1,7 +1,14 @@
 import { test, expect, Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import statementExample from '../../data/examples/normalized-statement.json';
-import type { BankStatement, StatementTransaction } from '../src/services/statement-exports';
+import type {
+  BankStatement,
+  StatementTransaction,
+  StatementExtract,
+} from '../src/services/statement-exports';
+import { extractTotals, filterStatementRows } from '../src/lib/statement-extract';
+import { normalizeMovementAmounts } from '../src/lib/statement-amounts';
+import { editTransactionValue } from '../src/lib/statement-row-editing';
 
 const csv = {
   id: 'csv-1',
@@ -117,6 +124,8 @@ async function mockApi(page: Page) {
     exports = 0;
   const models = [csv, ascii, x3];
   let lastExportStatus = 'SUCCEEDED';
+  const extracts: StatementExtract[] = [];
+  let conversionType: 'STATEMENT' | 'EXTRACT' = 'STATEMENT';
   let statement = {
     ...statementExample,
     id: 'statement-1',
@@ -135,7 +144,7 @@ async function mockApi(page: Page) {
       status,
       version,
       validatedAt: status === 'VALIDATED' ? '2026-10-07T10:00:00Z' : null,
-      statement,
+      statement: { ...statement, extracts, conversionType },
       warnings: [],
       errors: [],
       sourceFileName: 'releve.pdf',
@@ -180,6 +189,11 @@ async function mockApi(page: Page) {
     if (path === '/statement-imports/pdf' && method === 'POST') {
       expect(route.request().headers()['content-type']).toContain('multipart/form-data');
       expect(route.request().postData()).toContain('releve.pdf');
+      conversionType = /name="conversionType"\r?\n\r?\nEXTRACT/.test(
+        route.request().postData() ?? '',
+      )
+        ? 'EXTRACT'
+        : 'STATEMENT';
       imported = true;
       return respond(detail());
     }
@@ -210,6 +224,61 @@ async function mockApi(page: Page) {
       status = 'NEEDS_REVIEW';
       return respond(detail());
     }
+    if (path === '/statement-imports/statement-1/extracts' && method === 'POST') {
+      const input = route.request().postDataJSON();
+      expect(input.statementVersion).toBe(version);
+      if (input.statement) statement = input.statement;
+      const rows = filterStatementRows(
+        statement.transactions as StatementTransaction[],
+        input.filterText,
+        input.excludeText,
+      );
+      extracts.push({
+        id: `extract-${extracts.length + 1}`,
+        filterText: input.filterText.trim(),
+        excludeText: input.excludeText ?? '',
+        createdAt: '2026-10-14T10:00:00Z',
+        sourceVersion: version,
+        currency: 'MAD',
+        transactions: rows,
+        ...extractTotals(rows),
+      });
+      version++;
+      return respond(detail());
+    }
+    if (path.startsWith('/statement-imports/statement-1/extracts/') && method === 'DELETE') {
+      const index = extracts.findIndex((item) => item.id === path.split('/').at(-1));
+      extracts.splice(index, 1);
+      version++;
+      return respond(detail());
+    }
+    if (path === '/statement-imports/statement-1/download-complete') {
+      version++;
+      status = 'EXPORTED';
+      return respond(detail());
+    }
+    if (path === '/statement-imports/statement-1/extracts/extract-1/file')
+      return route.fulfill({
+        contentType: 'text/csv',
+        body: 'Libellé;Débit;Crédit\r\nFRAIS BANCAIRES;125,50;\r\nTOTAL;125,50;0,00\r\nSOLDE;;-125,50\r\n',
+      });
+    if (path === '/statement-imports/statement-1/extracts/extract-1') return respond(extracts[0]);
+    if (path === '/client-workspace/extracts')
+      return respond(
+        pagination(
+          extracts.map((extract) => ({
+            ...extract,
+            statementId: statement.id,
+            transactionCount: extract.transactions.length,
+            bankName: statement.bankName,
+            clientName: 'Client exemple',
+            sourceFileName: 'releve.pdf',
+            accountName: 'Compte principal',
+            accountNumber: null,
+          })),
+        ),
+      );
+    if (path === '/client-workspace/statements') return respond(pagination([]));
     if (path === '/statement-imports/statement-1') return respond(detail());
     if (path.endsWith('/validate')) {
       expect(route.request().postDataJSON().version).toBe(version);
@@ -280,7 +349,33 @@ async function mockApi(page: Page) {
         statementVersion: version,
         templateFingerprint: 'snapshot-1',
       };
-      return respond(prepare ? { detail: detail(), preview } : preview);
+      const scope = extracts.find((item) => item.id === route.request().postDataJSON().extractId);
+      const indexes = preview.rows
+        .map((_, index) => index)
+        .filter(
+          (index) =>
+            !scope ||
+            preview.rowSequences[index] === null ||
+            scope.transactions.some((row) => row.sequence === preview.rowSequences[index]),
+        );
+      const scopedPreview = scope
+        ? {
+            ...preview,
+            extractId: scope.id,
+            templateFingerprint: 'snapshot-1:' + scope.id,
+            rows: indexes.map((index) => preview.rows[index]),
+            rowSequences: indexes.map((index) => preview.rowSequences[index]),
+            rowKinds: preview.rowKinds
+              ? indexes.map((index) => preview.rowKinds![index])
+              : undefined,
+            rowColumnIndices: preview.rowColumnIndices
+              ? indexes.map((index) => preview.rowColumnIndices![index])
+              : undefined,
+            totalRows: indexes.length,
+            text: indexes.map((index) => preview.rows[index].join(';')).join('\r\n') + '\r\n',
+          }
+        : preview;
+      return respond(prepare ? { detail: detail(), preview: scopedPreview } : scopedPreview);
     }
     if (path === '/statement-imports/statement-1/exports')
       return respond(
@@ -305,6 +400,16 @@ async function mockApi(page: Page) {
         ),
       );
     if (path === '/statement-imports/statement-1/exports/csv-1') {
+      if (route.request().postDataJSON().extractId) {
+        exports++;
+        return route.fulfill({
+          body:
+            route.request().postDataJSON().editedText ??
+            'Date;Libellé;Montant\r\n02/09/2026;FRAIS BANCAIRES;125,50\r\n',
+          contentType: 'text/csv',
+          headers: { 'Content-Disposition': 'attachment; filename="extrait.csv"' },
+        });
+      }
       expect(status).toBe('VALIDATED');
       expect(route.request().postDataJSON()).toEqual({
         statementVersion: version,
@@ -525,7 +630,7 @@ test('Le PDF à droite permet de sélectionner, zoomer et corriger les montants 
   await panel.getByRole('button', { name: 'Agrandir le PDF', exact: true }).click();
   await expect(panel.getByText('125 %', { exact: true })).toBeVisible();
   await expect(amount).toBeVisible();
-  const pdfToggle = panel.getByRole('button', { name: 'Affichage du PDF original', exact: true });
+  const pdfToggle = panel.getByRole('button', { name: 'Affichage des PDF', exact: true });
   await pdfToggle.click();
   await expect(amount).toBeHidden();
   await expect(pdfToggle).toHaveAttribute('aria-expanded', 'false');
@@ -882,7 +987,7 @@ for (const view of ['Mouvements', 'Aperçu du fichier'] as const) {
       .getByRole('navigation', { name: 'Pages de l’aperçu' })
       .getByRole('button', { name: 'Précédent', exact: true })
       .click();
-    await page.getByRole('button', { name: 'Affichage du PDF original', exact: true }).click();
+    await page.getByRole('button', { name: 'Affichage des PDF', exact: true }).click();
     await page.setViewportSize({ width: 1366, height: 900 });
     await page.screenshot({
       path: `../output/screenshots/row-order-${view === 'Mouvements' ? 'movements' : 'preview'}.png`,
@@ -921,7 +1026,7 @@ test('Le PDF se replie et les étapes précédentes restent accessibles sans per
   await expect(page).toHaveURL(/statementId=statement-1.*step=model/);
   await page.getByLabel('Modèle d’exportation', { exact: true }).selectOption(x3.id);
   await page.getByRole('button', { name: 'Afficher le résultat', exact: true }).click();
-  const pdfToggle = page.getByRole('button', { name: 'Affichage du PDF original', exact: true });
+  const pdfToggle = page.getByRole('button', { name: 'Affichage des PDF', exact: true });
   await expect(pdfToggle).toHaveAttribute('aria-expanded', 'true');
   await pdfToggle.click();
   await expect(pdfToggle).toHaveAttribute('aria-expanded', 'false');
@@ -2387,7 +2492,7 @@ test('Import, review, preview, validate and download the exact file with audit h
   await page.getByRole('tab', { name: 'Historique' }).click();
   await expect(page.getByRole('tabpanel')).toContainText('DEMO_1234_2026-09_CUSTOMCSV.csv');
   await page.getByRole('tab', { name: 'Mouvements' }).click();
-  await page.evaluate(() => document.querySelector('.app-scroll')?.scrollTo(0, 0));
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: '../output/conversion-desktop.png' });
 });
 test('ASCII diagnostics identify the transaction and block the download', async ({ page }) => {
@@ -2479,8 +2584,221 @@ test('Mobile layout has no page overflow and all export controls remain reachabl
   );
   await expect(page.getByRole('button', { name: 'Télécharger', exact: true })).toBeVisible();
   await page.screenshot({ path: '../output/conversion-mobile-export.png' });
-  await page.evaluate(() => document.querySelector('.app-scroll')?.scrollTo(0, 0));
+  await expect(page.locator('.app-scroll')).toHaveCSS('overflow-y', 'visible');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: '../output/conversion-mobile.png' });
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await expect(page.locator('.app-scroll')).toHaveCSS('overflow-y', 'visible');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+});
+
+test('Preview row actions edit inline, delete and undo without leaving the preview', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1720, height: 1080 });
+  await importExample(page);
+  await page
+    .getByRole('combobox', { name: 'Modèle d’exportation', exact: true })
+    .selectOption(csv.id);
+  await page.getByRole('button', { name: 'Aperçu', exact: true }).click();
+  const table = page.locator('table.preview');
+  await expect(page.locator('.conversion-next-step')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Modifier la ligne 1 dans l’aperçu' }).click();
+  const input = table.locator('input[type="date"]');
+  await input.fill('2026-09-03');
+  await input.press('Enter');
+  await expect(table).toContainText('03/09/2026');
+  await page.getByRole('button', { name: 'Supprimer la ligne 2 dans l’aperçu' }).click();
+  await page
+    .getByRole('dialog', { name: 'Supprimer des lignes' })
+    .getByRole('button', { name: 'Supprimer les lignes' })
+    .click();
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(page.getByRole('tab', { name: 'Aperçu du fichier' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Annuler la dernière action', exact: true }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  const text = await page.locator('.conversion-document-actions > p').boundingBox();
+  expect(text!.width).toBeGreaterThan(300);
+  await page.screenshot({ path: '../output/preview-actions-layout.png', fullPage: true });
+});
+
+test('Original and converted PDFs can be consulted in the conversion panel', async ({ page }) => {
+  const pdf = await readFile('public/resources/modele-releve-alias.pdf');
+  await page.route('**/api/statement-imports/statement-1/original', (route) =>
+    route.fulfill({ contentType: 'application/pdf', body: pdf }),
+  );
+  await page.route(
+    '**/api/statement-imports/statement-1/normalized-pdf?version=*&preview=true',
+    (route) => route.fulfill({ contentType: 'application/pdf', body: pdf }),
+  );
+  await importExample(page);
+  await expect(page.getByRole('tab', { name: 'Texte lu & adaptation' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Adapter le relevé', exact: true })).toHaveCount(0);
+  const panel = page.getByRole('complementary', { name: 'Consultation et sélection du PDF' });
+  await expect(panel.getByRole('heading', { name: 'Votre relevé original' })).toBeVisible();
+  await panel.getByRole('button', { name: 'PDF converti', exact: true }).click();
+  const converted = panel.getByRole('region', { name: 'Relevé bancaire converti' });
+  await expect(converted.getByText('Page 1 / 2', { exact: true })).toBeVisible();
+  await expect(converted.locator('canvas')).toBeVisible();
+  await expect(panel.locator('.pdf-correction-form')).toHaveCount(0);
+  await converted.getByRole('button', { name: 'Page suivante du PDF' }).click();
+  await expect(converted.getByText('Page 2 / 2', { exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: 'PDF original', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: 'Votre relevé original' })).toBeVisible();
+  await expect(panel.locator('.pdf-correction-form')).toHaveCount(0);
+  await expect(
+    panel.getByRole('button', { name: 'Effacer la sélection', exact: true }),
+  ).toHaveCount(0);
+});
+
+test('Aperçu PDF stable après zoom, redimensionnement, changement de page et réouverture', async ({
+  page,
+}) => {
+  const pdf = await readFile('public/resources/modele-releve-alias.pdf');
+  await page.route('**/api/statement-imports/statement-1/original', (route) =>
+    route.fulfill({ contentType: 'application/pdf', body: pdf }),
+  );
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await importExample(page);
+  const viewer = page.getByRole('region', { name: 'Relevé bancaire original', exact: true });
+  await expect(viewer).toHaveAttribute('aria-busy', 'false');
+  async function expectStable() {
+    await expect(viewer).toHaveAttribute('aria-busy', 'false');
+    const sizes = await viewer.evaluate(async (element) => {
+      const canvas = element.querySelector('canvas')!;
+      const viewport = element.querySelector('.pdf-viewer-scroll')!;
+      const samples: string[] = [];
+      for (let frame = 0; frame < 60; frame++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        samples.push(
+          [
+            canvas.width,
+            canvas.height,
+            viewport.clientWidth,
+            element.getBoundingClientRect().height,
+            element.getAttribute('aria-busy'),
+          ].join(':'),
+        );
+      }
+      return [...new Set(samples)];
+    });
+    expect(sizes).toHaveLength(1);
+    expect(sizes[0]).toContain('false');
+    await expect(viewer.locator('.pdf-viewer-error')).toHaveCount(0);
+  }
+  await expectStable();
+  const initialWidth = await viewer
+    .locator('canvas')
+    .evaluate((element) => element.getBoundingClientRect().width);
+  await viewer.getByRole('button', { name: 'Agrandir le PDF', exact: true }).click();
+  await expect
+    .poll(() =>
+      viewer.locator('canvas').evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeGreaterThan(initialWidth * 1.2);
+  await expectStable();
+  for (let click = 0; click < 3; click++) {
+    await viewer.getByRole('button', { name: 'Agrandir le PDF', exact: true }).click();
+  }
+  await expect(viewer.getByText('200 %', { exact: true })).toBeVisible();
+  await expectStable();
+  await viewer.getByRole('button', { name: 'Page suivante du PDF', exact: true }).click();
+  await expect(viewer.getByText('Page 2 / 2', { exact: true })).toBeVisible();
+  await expectStable();
+  for (const width of [1250, 1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expectStable();
+  }
+  await viewer.getByRole('button', { name: 'Ajuster le PDF à la largeur', exact: true }).click();
+  await expectStable();
+  const panel = page.getByRole('complementary', { name: 'Consultation et sélection du PDF' });
+  await panel.getByRole('button', { name: 'Affichage des PDF' }).click();
+  await panel.getByRole('button', { name: 'Affichage des PDF' }).click();
+  await expectStable();
+});
+
+test('PDF indisponible : aucune grande zone vide et aperçu rétabli après une nouvelle tentative', async ({
+  page,
+}) => {
+  const pdf = await readFile('public/resources/modele-releve-alias.pdf');
+  let unavailable = true;
+  await page.route('**/api/statement-imports/statement-1/original', (route) =>
+    unavailable
+      ? route.fulfill({ status: 503 })
+      : route.fulfill({ contentType: 'application/pdf', body: pdf }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await importExample(page);
+  const viewer = page.getByRole('region', { name: 'Relevé bancaire original', exact: true });
+  await expect(viewer.locator('.pdf-viewer-error')).toBeVisible();
+  await expect(viewer.locator('.pdf-viewer-scroll')).toBeHidden();
+  await expect(viewer.getByRole('link', { name: 'Ouvrir le PDF', exact: true })).toBeVisible();
+  unavailable = false;
+  await viewer.getByRole('button', { name: 'Réessayer', exact: true }).click();
+  await expect(viewer.locator('.pdf-viewer-error')).toHaveCount(0);
+  await expect(viewer.locator('canvas')).toBeVisible();
+  await expect(viewer.locator('.pdf-viewer-scroll')).toBeVisible();
+});
+
+test('Structured PDF and control report download from saved statement data', async ({ page }) => {
+  await importExample(page);
+  await page
+    .getByRole('combobox', { name: 'Modèle d’exportation', exact: true })
+    .selectOption(csv.id);
+  await page.getByRole('button', { name: 'Aperçu', exact: true }).click();
+  await page.route('**/api/statement-imports/statement-1/normalized-pdf?version=*', (route) =>
+    route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.7 synthetic download fixture' }),
+  );
+  await page.route('**/api/statement-imports/statement-1/conversion-report?version=*', (route) =>
+    route.fulfill({ json: { status: 'NEEDS_REVIEW', operations: 2 } }),
+  );
+  const pdf = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'PDF structuré · 5 colonnes' }).click();
+  expect((await pdf).suggestedFilename()).toBe('releve-structure.pdf');
+  const report = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Rapport de contrôle' }).click();
+  expect(JSON.parse(await readFile((await (await report).path())!, 'utf8')).status).toBe(
+    'NEEDS_REVIEW',
+  );
+});
+
+test('Movement and preview headers align with cells and row controls stay compact', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1720, height: 1080 });
+  await page.addInitScript(() => localStorage.setItem('bank-converter-theme', 'dark'));
+  await importExample(page);
+  await page.getByRole('tab', { name: 'Mouvements' }).click();
+  const table = page.locator('.movements-table');
+  await expect(table).toBeVisible();
+  const aligned = await table.evaluate((element) => {
+    const headers = Array.from(element.querySelectorAll('thead th'));
+    const cells = Array.from(element.querySelectorAll('tbody tr:first-child td'));
+    return (
+      headers.length === cells.length &&
+      headers.every((header, index) => {
+        const a = header.getBoundingClientRect();
+        const b = cells[index].getBoundingClientRect();
+        return Math.abs(a.x - b.x) < 1 && Math.abs(a.width - b.width) < 1;
+      })
+    );
+  });
+  expect(aligned).toBe(true);
+  const controls = await table.locator('.statement-row-controls').first().boundingBox();
+  expect(controls?.height).toBeLessThanOrEqual(36);
+  await table.screenshot({ path: '../output/movement-table-organized.png' });
+  await page
+    .getByRole('combobox', { name: 'Modèle d’exportation', exact: true })
+    .selectOption(csv.id);
+  await page.getByRole('button', { name: 'Aperçu', exact: true }).click();
+  await page.getByRole('tab', { name: 'Aperçu du fichier', exact: true }).click();
+  await expect(page.locator('.conversion-table.preview')).toBeVisible();
 });
 
 test('Wide desktop and dark mode preserve a readable workspace and keyboard tabs', async ({
@@ -2907,3 +3225,335 @@ for (const compatible of [true, false]) {
     expect(adapted).toBe(compatible);
   });
 }
+
+test('Les paramètres précèdent la gestion des mouvements et les extraits restent accessibles dans leur espace', async ({
+  page,
+}) => {
+  await importExample(page);
+  const panel = page.getByRole('region', { name: 'Filtrage et extraits' });
+  const filter = panel.getByRole('searchbox', { name: 'Filtrer par texte dans le libellé' });
+  await filter.fill('frais bancaires');
+  await expect(
+    page.locator('#conversion-panel-transactions > .conversion-table-scroll tbody tr'),
+  ).toHaveCount(1);
+  await expect(panel).toContainText('-125,50');
+  await panel.getByRole('button', { name: 'Enregistrer l’extrait', exact: true }).click();
+  await expect(panel.getByRole('table')).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Réinitialiser cette sauvegarde' })).toBeVisible();
+  const filterBox = await panel.boundingBox();
+  const toolsBox = await page
+    .locator('#conversion-panel-transactions [aria-label="Modification des lignes"]')
+    .boundingBox();
+  expect(filterBox!.y + filterBox!.height).toBeLessThanOrEqual(toolsBox!.y + 1);
+  await panel.screenshot({ path: 'test-results/extrait-apercu.png' });
+  await page.reload();
+  await expect(panel.getByRole('table')).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Réinitialiser cette sauvegarde' })).toBeVisible();
+  await filter.fill('aucun résultat');
+  await expect(
+    page.locator('#conversion-panel-transactions > .conversion-table-scroll tbody tr'),
+  ).toHaveCount(0);
+  await expect(
+    panel.getByRole('button', { name: 'Enregistrer l’extrait', exact: true }),
+  ).toBeDisabled();
+  await expect(panel.getByRole('table')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Réinitialiser', exact: true }).click();
+  await expect(
+    page.locator('#conversion-panel-transactions > .conversion-table-scroll tbody tr'),
+  ).toHaveCount(2);
+  await page.goto('/client-workspace?section=extracts');
+  await page.getByText('Filtres sauvegardés sur les mouvements', { exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'frais bancaires', exact: true })).toBeVisible();
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Télécharger CSV', exact: true }).click();
+  expect((await downloaded).suggestedFilename()).toBe('extrait_extract-1.csv');
+});
+
+test('Les calculs de filtrage préservent les décimales et la recherche accepte une phrase avec accents', () => {
+  const rows = [
+    { description: 'VIREMENT REÇU', debit: null, credit: '0.1' },
+    { description: 'virement reçu client', debit: '0.02', credit: '0.2' },
+    { description: 'FRAIS', debit: '999', credit: null },
+  ] as StatementTransaction[];
+  expect(extractTotals(filterStatementRows(rows, '  virement recu  '))).toEqual({
+    totalDebit: '0.02',
+    totalCredit: '0.30',
+    balance: '0.28',
+  });
+  expect(
+    extractTotals([{ debit: '123456789012345678.1234', credit: '0.0001' } as StatementTransaction]),
+  ).toEqual({
+    totalDebit: '123456789012345678.1234',
+    totalCredit: '0.0001',
+    balance: '-123456789012345678.1233',
+  });
+});
+
+test('Conversion directe d’un extrait importé sans créer ni sauvegarder un filtre', async ({
+  page,
+}) => {
+  await page.route('**/api/statement-imports/statement-1/exports/csv-1', (route) =>
+    route.fulfill({
+      body: content,
+      contentType: 'text/csv',
+      headers: { 'Content-Disposition': 'attachment; filename="extrait-converti.csv"' },
+    }),
+  );
+  let savedFilters = 0;
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().endsWith('/extracts')) savedFilters++;
+  });
+  await page.goto('/conversions?import=1&type=extract');
+  await expect(
+    page.getByRole('heading', { name: 'Convertir un extrait bancaire PDF' }),
+  ).toBeVisible();
+  await page.getByLabel('Fichier PDF du relevé').setInputFiles({
+    name: 'releve.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.7 synthetic mock'),
+  });
+  await page.getByLabel('Banque du relevé', { exact: true }).selectOption('bank-1');
+  await page.getByRole('button', { name: 'Importer et continuer' }).click();
+  await page.getByLabel('Modèle d’exportation', { exact: true }).selectOption(csv.id);
+  await page.getByRole('button', { name: 'Afficher le résultat', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Aperçu du fichier' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.locator('#conversion-panel-preview')).toContainText('VIREMENT CLIENT');
+  await expect(page.locator('#conversion-panel-preview')).toContainText('FRAIS BANCAIRES');
+  const posted = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().endsWith('/exports/csv-1'),
+  );
+  const downloaded = page.waitForEvent('download');
+  await page
+    .locator('#conversion-panel-preview')
+    .getByRole('button', { name: /Télécharger/ })
+    .click();
+  expect((await posted).postDataJSON().extractId).toBeUndefined();
+  expect((await downloaded).suggestedFilename()).toMatch(/\.csv$/);
+  expect(savedFilters).toBe(0);
+  await expect(page).toHaveURL(/section=extracts/);
+});
+
+test('La conversion retrouve son ancien design avec les deux imports et sans prompts', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/conversions');
+  await expect(page.locator('.conversion-hero')).toBeVisible();
+  await expect(page.locator('.conversion-start')).toContainText('Votre conversion commence ici.');
+  await expect(
+    page.locator('.conversion-hero').getByRole('button', { name: /Importer/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('.conversion-start').getByRole('button', { name: /Importer/ }),
+  ).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /Prompt pour/ })).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.conversion-document-grid')).toHaveCount(0);
+  await page
+    .locator('.conversion-page')
+    .screenshot({ path: 'test-results/conversion-legacy-desktop.png' });
+  await page.getByRole('button', { name: 'Importer un relevé', exact: true }).click();
+  await expect(page.getByRole('radio', { name: /Relevé bancaire/ }).first()).toBeChecked();
+  await page.getByRole('button', { name: 'Retour', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/conversion-legacy-mobile.png' });
+  await page.getByRole('button', { name: 'Importer un extrait', exact: true }).click();
+  await expect(page.getByRole('radio', { name: /Extrait de relevé bancaire/ })).toBeChecked();
+});
+
+test('La conversion Extrait propose son propre parcours et son archive dans l’espace clients', async ({
+  page,
+}) => {
+  await page.goto('/conversions');
+  await page.getByRole('button', { name: 'Importer un extrait', exact: true }).click();
+  await expect(page.getByRole('radio', { name: /Extrait de relevé bancaire/ })).toBeChecked();
+  await expect(
+    page.getByRole('heading', { name: 'Convertir un extrait bancaire PDF', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Étapes de la conversion' })).toContainText(
+    'Choisir le modèle',
+  );
+  await page
+    .locator('.conversion-import-page')
+    .screenshot({ path: 'test-results/import-extrait.png' });
+  await page.getByLabel('Fichier PDF du relevé').setInputFiles({
+    name: 'releve.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.7 synthetic mock'),
+  });
+  await page.getByLabel('Banque du relevé', { exact: true }).selectOption('bank-1');
+  await page.getByRole('button', { name: 'Importer et continuer' }).click();
+  await expect(page).toHaveURL(/type=extract/);
+  await page.getByLabel('Modèle d’exportation', { exact: true }).selectOption(csv.id);
+  await page.getByRole('button', { name: 'Afficher le résultat', exact: true }).click();
+  await expect(
+    page.getByRole('complementary', { name: 'Paramètres de l’export', includeHidden: true }),
+  ).toBeAttached();
+  await page.getByRole('tab', { name: /Mouvements/ }).click();
+  const panel = page.getByRole('region', { name: 'Filtrage et extraits' });
+  await panel.getByRole('searchbox').fill('frais bancaires');
+  await panel.getByRole('button', { name: 'Enregistrer l’extrait', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Aperçu du fichier' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.locator('#conversion-panel-preview')).toContainText('FRAIS BANCAIRES');
+  await expect(page.locator('#conversion-panel-preview')).not.toContainText('VIREMENT CLIENT');
+  await page.getByRole('tab', { name: /Mouvements/ }).click();
+  await expect(panel.getByRole('table')).toHaveCount(0);
+  await expect(
+    page.locator('#conversion-panel-transactions > .conversion-table-scroll tbody'),
+  ).toContainText('FRAIS BANCAIRES');
+  await expect(panel.getByRole('searchbox')).toHaveValue('frais bancaires');
+  await page.goto('/client-workspace');
+  await page.getByRole('tab', { name: 'Extraits de relevés bancaires', exact: true }).click();
+  await page.getByText('Filtres sauvegardés sur les mouvements', { exact: true }).click();
+  await expect(
+    page.getByRole('tab', { name: 'Extraits de relevés bancaires', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { name: 'frais bancaires', exact: true })).toBeVisible();
+  await expect(page.locator('.client-archive-card').first()).toContainText('-125,50');
+  await page.screenshot({ path: 'test-results/espace-extraits.png', fullPage: true });
+  await page.getByRole('button', { name: 'Aperçu du fichier', exact: true }).click();
+  const preview = page.getByRole('dialog', { name: 'Aperçu de l’extrait de relevé bancaire' });
+  await expect(preview.getByRole('table')).toContainText('FRAIS BANCAIRES');
+  await expect(preview).toContainText('-125,50');
+});
+
+test('Extrait : exclusion libre, aperçu TXT avec modèle et réinitialisation de la sauvegarde', async ({
+  page,
+}) => {
+  await page.goto('/conversions?import=1&type=extract');
+  await page.getByLabel('Fichier PDF du relevé').setInputFiles({
+    name: 'releve.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.7 synthetic mock'),
+  });
+  await page.getByLabel('Banque du relevé', { exact: true }).selectOption('bank-1');
+  await page.getByRole('button', { name: 'Importer et continuer' }).click();
+  await page.getByLabel('Modèle d’exportation', { exact: true }).selectOption(csv.id);
+  await page.getByRole('button', { name: 'Afficher le résultat', exact: true }).click();
+  await page.getByRole('tab', { name: /Mouvements/ }).click();
+  const panel = page.getByRole('region', { name: 'Filtrage et extraits' });
+  await panel
+    .getByLabel('Exclure les lignes contenant', { exact: true })
+    .fill('client, annulation');
+  await expect(
+    page.locator('#conversion-panel-transactions > .conversion-table-scroll tbody tr'),
+  ).toHaveCount(1);
+  await panel.getByRole('button', { name: 'Enregistrer l’extrait', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Aperçu du fichier' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Texte du fichier', exact: true }).click();
+  const text = page.getByLabel('Contenu du fichier à télécharger', { exact: true });
+  await expect(text).toHaveValue(/FRAIS BANCAIRES/);
+  await expect(text).not.toHaveValue(/VIREMENT CLIENT/);
+  await text.fill('EXTRAIT TXT MANUEL\r\n');
+  await page.getByRole('button', { name: 'Rétablir le texte généré', exact: true }).click();
+  await page.getByRole('tab', { name: /Mouvements/ }).click();
+  await panel.getByRole('button', { name: 'Réinitialiser cette sauvegarde', exact: true }).click();
+  await expect(panel.getByLabel('Exclure les lignes contenant', { exact: true })).toHaveValue('');
+  await expect(
+    page.locator('#conversion-panel-transactions > .conversion-table-scroll tbody tr'),
+  ).toHaveCount(2);
+  await expect(panel.getByRole('button', { name: 'Réinitialiser cette sauvegarde' })).toHaveCount(
+    0,
+  );
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Aperçu du fichier' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('tab', { name: /Mouvements/ }).click();
+  await expect(panel.getByRole('table', { name: 'Aperçu de l’extrait enregistré' })).toHaveCount(0);
+});
+
+test('L’export TXT modifié d’un extrait envoie la sauvegarde sélectionnée et le texte exact', async ({
+  page,
+}) => {
+  await page.goto('/conversions?import=1&type=extract');
+  await page.getByLabel('Fichier PDF du relevé').setInputFiles({
+    name: 'releve.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.7 synthetic mock'),
+  });
+  await page.getByLabel('Banque du relevé', { exact: true }).selectOption('bank-1');
+  await page.getByRole('button', { name: 'Importer et continuer' }).click();
+  await page.getByLabel('Modèle d’exportation', { exact: true }).selectOption(csv.id);
+  await page.getByRole('button', { name: 'Afficher le résultat', exact: true }).click();
+  await page.getByRole('tab', { name: /Mouvements/ }).click();
+  const panel = page.getByRole('region', { name: 'Filtrage et extraits' });
+  await panel.getByLabel('Exclure les lignes contenant', { exact: true }).fill('client');
+  await panel.getByRole('button', { name: 'Enregistrer l’extrait', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Aperçu du fichier' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Texte du fichier', exact: true }).click();
+  const text = page.getByLabel('Contenu du fichier à télécharger', { exact: true });
+  await expect(text).toHaveValue(/FRAIS BANCAIRES/);
+  await text.fill('EXTRAIT MANUEL;125,50\n');
+  await page
+    .locator('#conversion-panel-preview')
+    .screenshot({ path: 'test-results/extrait-modele-txt.png' });
+  const sent = page.waitForRequest(
+    (req) => req.method() === 'POST' && req.url().endsWith('/exports/csv-1'),
+  );
+  const downloaded = page.waitForEvent('download');
+  await page
+    .locator('#conversion-panel-preview')
+    .getByRole('button', { name: /Télécharger/ })
+    .click();
+  expect((await sent).postDataJSON()).toMatchObject({
+    extractId: 'extract-1',
+    templateFingerprint: 'snapshot-1:extract-1',
+    editedText: 'EXTRAIT MANUEL;125,50\r\n',
+  });
+  expect((await downloaded).suggestedFilename()).toBe('extrait.csv');
+  await expect(page).toHaveURL(/client-workspace\?section=extracts/);
+});
+
+test('Les montants zéro ou null restent vides et ne changent pas le sens du montant réel', () => {
+  const debit = {
+    debit: '125.50',
+    credit: '0.00',
+    amount: '125.50',
+    direction: 'CREDIT',
+  } as StatementTransaction;
+  expect(normalizeMovementAmounts(debit)).toMatchObject({
+    debit: '125.50',
+    credit: null,
+    direction: 'DEBIT',
+  });
+  expect(
+    normalizeMovementAmounts({
+      debit: 0,
+      credit: '125.50',
+      amount: '0',
+      direction: 'DEBIT',
+    } as StatementTransaction),
+  ).toMatchObject({ debit: null, credit: '125.50', amount: '125.50', direction: 'CREDIT' });
+  expect(editTransactionValue(normalizeMovementAmounts(debit), 'credit', '0.000')).toMatchObject({
+    debit: '125.50',
+    credit: null,
+    direction: 'DEBIT',
+  });
+  expect(editTransactionValue(normalizeMovementAmounts(debit), 'debit', '0')).toMatchObject({
+    debit: null,
+    credit: null,
+    amount: null,
+    direction: null,
+  });
+  expect(editTransactionValue(normalizeMovementAmounts(debit), 'amount', '0')).toMatchObject({
+    debit: null,
+    credit: null,
+    amount: null,
+    direction: null,
+  });
+});

@@ -19,7 +19,11 @@ public sealed class AuthController(WorkspaceUserService users, AppDbContext db) 
     {
         Response.Headers.CacheControl = "no-store";
         var user = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? await db.WorkspaceUsers.AsNoTracking().SingleOrDefaultAsync(u => u.Id == id, ct) : null;
-        return Ok(new { setupRequired = await users.NeedsSetup(ct), user = user == null ? null : WorkspaceUserService.Dto(user) });
+        return Ok(new
+        {
+            setupRequired = await users.NeedsSetup(ct),
+            user = user == null ? null : WorkspaceUserService.Dto(user)
+        });
     }
     [HttpPost("setup"), AllowAnonymous, EnableRateLimiting("authentication")]
     public async Task<UserDto> Setup(SetupInput input, CancellationToken ct) => await SignIn(await users.Setup(input, ct), ct);
@@ -29,17 +33,21 @@ public sealed class AuthController(WorkspaceUserService users, AppDbContext db) 
     {
         var expiry = DateTime.UtcNow.AddHours(8);
         var previous = User.FindFirstValue("session");
-        if (Guid.TryParse(previous, out var oldId)) await db.WorkspaceSessions.Where(s => s.Id == oldId).ExecuteDeleteAsync(ct);
+        if (Guid.TryParse(previous, out var oldId))
+            await db.WorkspaceSessions.Where(s => s.Id == oldId).ExecuteDeleteAsync(ct);
         await db.WorkspaceSessions.Where(s => s.ExpiresAt < DateTime.UtcNow).ExecuteDeleteAsync(ct);
         var session = new WorkspaceSession { UserId = user.Id, UserSessionVersion = user.SessionVersion, ExpiresAt = expiry };
-        db.WorkspaceSessions.Add(session); await db.SaveChangesAsync(ct);
+        db.WorkspaceSessions.Add(session);
+        await db.SaveChangesAsync(ct);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, WorkspaceCookieEvents.Principal(user, session.Id), new AuthenticationProperties { ExpiresUtc = expiry, IsPersistent = false });
         return WorkspaceUserService.Dto(user);
     }
     [HttpPost("logout")]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
-        if (Guid.TryParse(User.FindFirstValue("session"), out var id)) await db.WorkspaceSessions.Where(s => s.Id == id).ExecuteDeleteAsync(ct);
-        await HttpContext.SignOutAsync(); return NoContent();
+        if (Guid.TryParse(User.FindFirstValue("session"), out var id))
+            await db.WorkspaceSessions.Where(s => s.Id == id).ExecuteDeleteAsync(ct);
+        await HttpContext.SignOutAsync();
+        return NoContent();
     }
 }

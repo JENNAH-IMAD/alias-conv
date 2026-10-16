@@ -10,12 +10,24 @@ public sealed class WorkspaceUser : Entity
     public string PermissionsJson { get; set; } = "[]";
     public int Version { get; set; } = 1;
     public int SessionVersion { get; set; } = 1;
-    public DateTime? LastLoginAt { get; set; }
+    public DateTime? LastLoginAt
+    {
+        get; set;
+    }
 }
 public sealed class WorkspaceSession : Entity
 {
-    public Guid UserId { get; set; }
+    public Guid UserId
+    {
+        get; set;
+    }
     public WorkspaceUser User { get; set; } = null!;
-    public int UserSessionVersion { get; set; }
-    public DateTime ExpiresAt { get; set; }
+    public int UserSessionVersion
+    {
+        get; set;
+    }
+    public DateTime ExpiresAt
+    {
+        get; set;
+    }
 }

@@ -11,11 +11,12 @@ public record ExportPreview(ExportTemplateSummary Template, IReadOnlyList<string
     [property: JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)] decimal? OpeningBalance,
     [property: JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)] decimal? ClosingBalance,
     IReadOnlyList<ExportError> Warnings, IReadOnlyList<ExportError> Errors, int StatementVersion = 0, string TemplateFingerprint = "",
-    IReadOnlyList<string>? RowKinds = null, IReadOnlyList<int[]>? RowColumnIndices = null, string? Text = null, bool TextTruncated = false);
+    IReadOnlyList<string>? RowKinds = null, IReadOnlyList<int[]>? RowColumnIndices = null, string? Text = null, bool TextTruncated = false, Guid? ExtractId = null);
 public record StatementVersionRequest(int Version);
-public record PrepareStatementExportRequest(int StatementVersion, Guid TemplateId);
+public sealed record SaveStatementExtractRequest(int StatementVersion, string? FilterText, string? ExcludeText = null, BankStatement? Statement = null);
+public record PrepareStatementExportRequest(int StatementVersion, Guid TemplateId, Guid? ExtractId = null);
 public record PreparedStatementExport(StatementDetail Detail, ExportPreview Preview);
-public record ExportRequest(int StatementVersion, string? TemplateFingerprint = null, bool AllowErrors = false, string? EditedText = null);
+public record ExportRequest(int StatementVersion, string? TemplateFingerprint = null, bool AllowErrors = false, string? EditedText = null, Guid? ExtractId = null);
 public record ExportGenerationOptions(bool AllowErrors = false, string? EditedText = null);
 public record ResolvedExportSource(bool IsKnown, object? Value);
 

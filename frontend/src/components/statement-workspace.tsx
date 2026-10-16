@@ -10,8 +10,6 @@ import {
   FileOutput,
   Pencil,
   Save,
-  ShieldCheck,
-  AlertTriangle,
   ArrowUpRight,
   CheckCircle2,
   LoaderCircle,
@@ -25,15 +23,23 @@ import {
   GripVertical,
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { StatementDiagnostics } from './statement-diagnostics';
 import { StatementEditableCell } from './statement-editable-cell';
 import { cellKind, previewEditTarget } from '@/lib/statement-preview-editing';
 import { statementPreviewRows } from '@/lib/statement-preview-rows';
+import { absoluteBalance, balanceDirection } from '@/lib/statement-balance';
 import { ConversionSteps } from './conversion-steps';
-import { StatementExtraction } from './statement-extraction';
 import { StatementPdfPanel } from './statement-pdf-panel';
-import type { PdfSelection } from '@/lib/pdf-selection';
 import type { EditableTransactionField } from '@/lib/statement-row-editing';
-import { API_URL, ApiError, ExportDiagnostic, ExportTemplate, request } from '@/services/api';
+import {
+  API_URL,
+  ApiError,
+  ExportDiagnostic,
+  ExportTemplate,
+  request,
+  documentBlob,
+  saveBlob,
+} from '@/services/api';
 import {
   accountSuffix,
   BankStatement,
@@ -52,6 +58,8 @@ import { StatementAssociation } from './statement-association';
 import { ExportTemplateEditor } from './export-template-editor';
 import { BankDialog } from './bank-dialogs';
 import { StatementColumnEditor } from './statement-column-editor';
+import { StatementExtractPanel } from './statement-extract-panel';
+import { filterStatementRows } from '@/lib/statement-extract';
 import { editTransactionValue, newStatementTransaction } from '@/lib/statement-row-editing';
 import {
   canChooseExportLocation,
@@ -60,116 +68,6 @@ import {
 } from '@/lib/save-export';
 
 const subscribeToBrowserCapabilities = () => () => {};
-const diagnosticFieldNames: Record<string, string> = {
-  Date: 'Date opération',
-  ValueDate: 'Date valeur',
-  Description: 'Libellé',
-  Amount: 'Montant',
-  Debit: 'Débit',
-  Credit: 'Crédit',
-  Direction: 'Sens',
-  OpeningBalance: 'Solde initial',
-  ClosingBalance: 'Solde final',
-  TotalDebit: 'Total débit',
-  TotalCredit: 'Total crédit',
-  Currency: 'Devise',
-  StatementNumber: 'Numéro du relevé',
-  AccountNumber: 'Compte bancaire',
-  BankCode: 'Code banque',
-  Journal: 'Journal',
-  Account: 'Compte comptable',
-  Balance: 'Solde',
-  Sequence: 'Numéro de ligne',
-  Reference: 'Référence',
-};
-
-function Diagnostics({
-  errors,
-  warnings,
-  onTransaction,
-  onStatement,
-}: {
-  errors: ExportDiagnostic[];
-  warnings: ExportDiagnostic[];
-  onTransaction?: (sequence: number) => void;
-  onStatement?: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const items = [
-    ...errors.map((e) => ({ ...e, blocking: true })),
-    ...warnings.map((e) => ({ ...e, blocking: false })),
-  ];
-  if (!items.length)
-    return (
-      <div className="conversion-clean">
-        <ShieldCheck size={18} />
-        <span>Aucune anomalie détectée dans les données contrôlées.</span>
-      </div>
-    );
-  return (
-    <div className="conversion-diagnostics" aria-label="Diagnostics du relevé">
-      <div className="conversion-section-heading">
-        <h3>
-          <AlertTriangle size={17} />
-          Points à vérifier
-        </h3>
-        <span>
-          {errors.length} erreur(s) · {warnings.length} avertissement(s)
-        </span>
-      </div>
-      <ul>
-        {(expanded ? items : items.slice(0, 12)).map((issue, index) => (
-          <li
-            key={`${issue.code}-${issue.transactionSequence}-${issue.fieldName}-${index}`}
-            className={issue.blocking ? 'error' : 'warning'}
-          >
-            <span className="conversion-diagnostic-mark">{issue.blocking ? '!' : 'i'}</span>
-            <div>
-              <strong>
-                {issue.transactionSequence ? `Transaction ${issue.transactionSequence}` : 'Relevé'}
-                {issue.fieldName
-                  ? ` · ${issue.fieldName}`
-                  : issue.sourceField
-                    ? ` · ${diagnosticFieldNames[issue.sourceField] ?? issue.sourceField}`
-                    : ''}
-              </strong>
-              <p>{issue.message}</p>
-              <small
-                title={
-                  issue.blocking
-                    ? 'À corriger avant validation ou export'
-                    : 'À vérifier avec le PDF original'
-                }
-              >
-                {issue.code}
-              </small>
-            </div>
-            {issue.transactionSequence && onTransaction && (
-              <button
-                type="button"
-                className="conversion-text-action"
-                onClick={() => onTransaction(issue.transactionSequence!)}
-              >
-                Corriger
-              </button>
-            )}
-            {!issue.transactionSequence && onStatement && issue.blocking && (
-              <button type="button" className="conversion-text-action" onClick={onStatement}>
-                Corriger les informations
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {items.length > 12 && (
-        <button className="conversion-text-action mt-3" onClick={() => setExpanded(!expanded)}>
-          {expanded ? 'Réduire' : `Voir les ${items.length} diagnostics`}
-        </button>
-      )}
-    </div>
-  );
-}
-
 export function StatementWorkspace({
   detail,
   templates,
@@ -182,12 +80,16 @@ export function StatementWorkspace({
   initialTab,
   onChooseTemplate,
   onImport,
+  extractMode = detail.statement.conversionType === 'EXTRACT',
+  initialExtractId,
 }: {
   guided?: boolean;
   initialPreview?: ExportPreview;
   initialTab?: 'transactions' | 'preview';
   onChooseTemplate?: () => void;
   onImport?: () => void;
+  extractMode?: boolean;
+  initialExtractId?: string;
   detail: StatementDetail;
   templates: ExportTemplate[];
   templateId: string;
@@ -200,7 +102,6 @@ export function StatementWorkspace({
   const flowHeaderRef = useRef<HTMLDivElement>(null);
   const documentRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState<BankStatement>(detail.statement);
-  const [pdfSelection, setPdfSelection] = useState<PdfSelection | null>(null);
   const dirty = draft !== detail.statement;
   const [editing, setEditing] = useState(false);
   const [focusRow, setFocusRow] = useState<string | null>(null);
@@ -217,6 +118,12 @@ export function StatementWorkspace({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [actionErrors, setActionErrors] = useState<ExportDiagnostic[]>([]);
+  const [selectedExtractId, setSelectedExtractId] = useState(
+    initialExtractId ?? detail.statement.extracts?.at(-1)?.id ?? '',
+  );
+  const activeExtract = detail.statement.extracts?.find(
+    (extract) => extract.id === selectedExtractId,
+  );
   const [preview, setPreview] = useState<ExportPreview | null>(initialPreview ?? null);
   const [flowStage, setFlowStage] = useState<3 | 4>(3);
   const router = useRouter();
@@ -224,20 +131,26 @@ export function StatementWorkspace({
   const [editedExportText, setEditedExportText] = useState<string | null>(null);
   const [exportTextSaved, setExportTextSaved] = useState(false);
   const [exportView, setExportView] = useState<'table' | 'text'>('table');
-  const allowExportErrors = true;
   const textEdited = editedExportText !== null && editedExportText !== preview?.text;
   useUnsavedChanges(dirty || pendingCells.size > 0 || (textEdited && !exportTextSaved));
   const [templateEditor, setTemplateEditor] = useState<{
     initial: ExportTemplate | null;
     duplicate?: boolean;
   } | null>(null);
-  const [, setReviewConfirmed] = useState(false);
   const [transactionPage, setTransactionPage] = useState(1);
+  const [movementFilter, setMovementFilter] = useState(
+    extractMode ? (activeExtract?.filterText ?? '') : '',
+  );
+  const [movementExclusion, setMovementExclusion] = useState(
+    extractMode ? (activeExtract?.excludeText ?? '') : '',
+  );
+  const extractFilterDirty =
+    extractMode &&
+    (movementFilter.trim() !== (activeExtract?.filterText ?? '') ||
+      movementExclusion.trim() !== (activeExtract?.excludeText ?? ''));
   const [previewPage, setPreviewPage] = useState(1);
-  const [tab, setTab] = useState<'transactions' | 'preview' | 'extraction' | 'history'>(
-    detail.extraction?.needsMapping
-      ? 'extraction'
-      : (initialTab ?? (guided ? 'preview' : 'transactions')),
+  const [tab, setTab] = useState<'transactions' | 'preview' | 'history'>(
+    initialTab ?? (guided ? 'preview' : 'transactions'),
   );
   useEffect(() => {
     if (!focusRow || !['transactions', 'preview'].includes(tab)) return;
@@ -253,11 +166,19 @@ export function StatementWorkspace({
     return () => cancelAnimationFrame(frame);
   }, [focusRow, tab, transactionPage, previewPage]);
   useEffect(() => {
-    if ((!guided && initialTab !== 'preview') || initialPreview || !templateId) return;
+    if (
+      (!guided && initialTab !== 'preview') ||
+      (initialPreview && (!extractMode || initialPreview.extractId === activeExtract?.id)) ||
+      !templateId
+    )
+      return;
     const controller = new AbortController();
     request<ExportPreview>(`/statement-imports/${detail.id}/exports/${templateId}/preview`, {
       method: 'POST',
-      body: JSON.stringify({ statementVersion: detail.version }),
+      body: JSON.stringify({
+        statementVersion: detail.version,
+        ...(extractMode ? { extractId: activeExtract?.id } : {}),
+      }),
       signal: controller.signal,
     })
       .then((result) => {
@@ -267,7 +188,16 @@ export function StatementWorkspace({
         if (!controller.signal.aborted) setError(reason.message);
       });
     return () => controller.abort();
-  }, [guided, initialTab, initialPreview, templateId, detail.id, detail.version]);
+  }, [
+    extractMode,
+    activeExtract,
+    guided,
+    initialTab,
+    initialPreview,
+    templateId,
+    detail.id,
+    detail.version,
+  ]);
   const [exportHistoryVersion, setExportHistoryVersion] = useState(0);
   const [downloadName, setDownloadName] = useState('');
   const [chooseLocation, setChooseLocation] = useState(true);
@@ -277,8 +207,15 @@ export function StatementWorkspace({
     () => false,
   );
   const model = templates.find((t) => t.id === templateId);
+  const extractMovementIds = new Set(activeExtract?.transactions.map((row) => row.id) ?? []);
   const previewRows = preview
-    ? statementPreviewRows(preview, detail.statement.transactions, draft.transactions)
+    ? statementPreviewRows(
+        preview,
+        extractMode && activeExtract ? activeExtract.transactions : detail.statement.transactions,
+        extractMode && activeExtract
+          ? draft.transactions.filter((row) => extractMovementIds.has(row.id))
+          : draft.transactions,
+      )
     : [];
   const previewPages = Math.max(1, Math.ceil(previewRows.length / 50));
   const visiblePreviewPage = Math.min(previewPage, previewPages);
@@ -294,6 +231,7 @@ export function StatementWorkspace({
   function correct(sequence: number) {
     const row = draft.transactions.find((t) => t.sequence === sequence);
     if (row) {
+      setMovementFilter('');
       setTab('transactions');
       setTransactionPage(Math.floor(draft.transactions.indexOf(row) / 50) + 1);
       setFocusRow(row.id);
@@ -321,7 +259,6 @@ export function StatementWorkspace({
     setSelectedRows(
       (selected) => new Set([...selected].filter((sequence) => sequences.has(sequence))),
     );
-    setReviewConfirmed(false);
     setError('');
     setNotice(message + ' Enregistrez les corrections pour les conserver.');
     return true;
@@ -462,7 +399,7 @@ export function StatementWorkspace({
           <Plus size={15} />
         </button>
         <label className="statement-row-position">
-          Position
+          <span className="sr-only">Position</span>
           <input
             key={`${row.id}-${row.sequence}`}
             type="number"
@@ -528,10 +465,21 @@ export function StatementWorkspace({
     setError('');
     setActionErrors([]);
     try {
-      await request(`/statement-imports/${detail.id}?version=${detail.version}`, {
-        method: 'PUT',
-        body: JSON.stringify(draft),
-      });
+      if (extractMode && activeExtract) {
+        await request(`/statement-imports/${detail.id}/extracts`, {
+          method: 'POST',
+          body: JSON.stringify({
+            statementVersion: detail.version,
+            statement: draft,
+            filterText: movementFilter,
+            excludeText: movementExclusion,
+          }),
+        });
+      } else
+        await request(`/statement-imports/${detail.id}?version=${detail.version}`, {
+          method: 'PUT',
+          body: JSON.stringify(draft),
+        });
       onSaved(tab === 'preview' ? 'preview' : 'transactions');
     } catch (e) {
       failed(e);
@@ -572,6 +520,11 @@ export function StatementWorkspace({
   }
   async function showPreview() {
     if (!model || dirty || pendingCells.size) return;
+    if (extractFilterDirty) {
+      setError('Enregistrez les nouveaux filtres pour actualiser l’aperçu de l’extrait.');
+      setTab('transactions');
+      return;
+    }
     if (textEdited && !exportTextSaved && !confirmDiscard(true)) return;
     setBusy('preview');
     setError('');
@@ -580,7 +533,13 @@ export function StatementWorkspace({
     try {
       const result = await request<ExportPreview>(
         `/statement-imports/${detail.id}/exports/${model.id}/preview`,
-        { method: 'POST', body: JSON.stringify({ statementVersion: detail.version }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            statementVersion: detail.version,
+            ...(extractMode ? { extractId: activeExtract?.id } : {}),
+          }),
+        },
       );
       setPreview(result);
       setEditedExportText(null);
@@ -592,7 +551,33 @@ export function StatementWorkspace({
       setBusy(null);
     }
   }
+  async function downloadStructured(report = false) {
+    if (dirty || pendingCells.size > 0 || busy) return;
+    if (extractFilterDirty) {
+      setError('Enregistrez l’extrait avant de télécharger son PDF ou son rapport.');
+      return;
+    }
+    setBusy('structured-download');
+    try {
+      const blob = await documentBlob(
+        `/statement-imports/${detail.id}/${report ? 'conversion-report' : 'normalized-pdf'}?version=${detail.version}${extractMode && activeExtract ? '&extractId=' + activeExtract.id : ''}`,
+      );
+      saveBlob(
+        blob,
+        `${extractMode ? 'extrait' : 'releve'}-${report ? 'controles.json' : 'structure.pdf'}`,
+      );
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy('');
+    }
+  }
   async function download() {
+    if (extractFilterDirty) {
+      setError('Enregistrez les nouveaux filtres avant de télécharger l’extrait.');
+      setTab('transactions');
+      return;
+    }
     if (!model || !model.isActive || dirty || busy || pendingCells.size) return;
     setBusy('download');
     setError('');
@@ -609,7 +594,13 @@ export function StatementWorkspace({
       // and template settings may change after an earlier preview.
       const current = await request<ExportPreview>(
         `/statement-imports/${detail.id}/exports/${model.id}/preview`,
-        { method: 'POST', body: JSON.stringify({ statementVersion: checkedVersion }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            statementVersion: checkedVersion,
+            ...(extractMode ? { extractId: activeExtract?.id } : {}),
+          }),
+        },
       );
       if (
         textEdited &&
@@ -641,7 +632,7 @@ export function StatementWorkspace({
         body: JSON.stringify({ version: current.statementVersion }),
       });
       router.push(
-        `/client-workspace${detail.clientId ? '?clientId=' + encodeURIComponent(detail.clientId) : ''}`,
+        `/client-workspace?section=${extractMode ? 'extracts' : 'statements'}${detail.clientId ? '&clientId=' + encodeURIComponent(detail.clientId) : ''}`,
       );
       setExportTextSaved(true);
     } catch (e) {
@@ -667,20 +658,49 @@ export function StatementWorkspace({
     key: 'openingBalance' | 'closingBalance' | 'totalDebit' | 'totalCredit',
     label: string,
   ) {
+    const isBalance = key === 'openingBalance' || key === 'closingBalance';
+    const negative = Number(draft[key]) < 0;
     return (
       <label key={key}>
         {label}
         <input
           className="ui-input mt-2"
           inputMode="decimal"
+          aria-label={label}
           pattern="-?[0-9]+([.][0-9]+)?"
-          value={String(draft[key] ?? '')}
-          onChange={(e) => update(key, e.target.value.replace(',', '.') || null)}
+          value={String((isBalance ? absoluteBalance(draft[key]) : draft[key]) ?? '')}
+          onChange={(e) => {
+            const value = e.target.value.replace(',', '.');
+            update(
+              key,
+              value
+                ? isBalance && negative && !value.startsWith('-')
+                  ? '-' + value
+                  : value
+                : null,
+            );
+          }}
         />
+        {isBalance && (
+          <select
+            className="ui-input mt-2"
+            aria-label={`Sens du ${label.toLowerCase()}`}
+            value={negative ? 'CREDIT' : 'DEBIT'}
+            onChange={(e) => {
+              const amount = String(absoluteBalance(draft[key]) ?? '');
+              update(key, amount ? (e.target.value === 'CREDIT' ? '-' : '') + amount : null);
+            }}
+          >
+            <option value="DEBIT">Débit</option>
+            <option value="CREDIT">Crédit</option>
+          </select>
+        )}
       </label>
     );
   }
-  const visibleRows = draft.transactions.slice((transactionPage - 1) * 50, transactionPage * 50);
+  const filteredRows = filterStatementRows(draft.transactions, movementFilter, movementExclusion);
+  const movementPage = Math.min(transactionPage, Math.max(1, Math.ceil(filteredRows.length / 50)));
+  const visibleRows = filteredRows.slice((movementPage - 1) * 50, movementPage * 50);
   const errors = actionErrors.length ? actionErrors : (preview?.errors ?? detail.errors);
   const warnings = (preview?.warnings ?? detail.warnings).filter(
     (issue) => !guided || issue.code !== 'STATEMENT_NOT_VALIDATED',
@@ -698,7 +718,7 @@ export function StatementWorkspace({
   }
   return (
     <div
-      className={`conversion-workspace ${detail.sourceFileName ? 'has-pdf-panel' : ''} ${guided ? `conversion-guided stage-${flowStage}` : ''}`}
+      className={`conversion-workspace ${extractMode ? 'is-extract-mode' : ''} ${detail.sourceFileName ? 'has-pdf-panel' : ''} ${guided ? `conversion-guided stage-${flowStage}` : ''}`}
     >
       {guided && (
         <div ref={flowHeaderRef} className="conversion-flow-header">
@@ -784,32 +804,6 @@ export function StatementWorkspace({
         className={`conversion-review-layout ${detail.sourceFileName && showPdfTools ? 'has-pdf-panel' : 'pdf-panel-hidden'}`}
       >
         <div className="conversion-main">
-          <div className="conversion-next-step">
-            <span className="conversion-next-icon">
-              <ShieldCheck size={22} />
-            </span>
-            <div>
-              <strong>
-                {needsAdaptation
-                  ? 'Préparez les colonnes du relevé'
-                  : validated
-                    ? 'Votre relevé est validé'
-                    : 'Vérifiez les mouvements extraits'}
-              </strong>
-              <p>
-                {needsAdaptation
-                  ? 'Associez les colonnes aux dates, libellés et montants pour préparer les mouvements.'
-                  : dirty
-                    ? 'Enregistrez vos corrections, puis vérifiez les soldes avant de valider.'
-                    : validated
-                      ? 'Choisissez votre modèle d’export, vérifiez l’aperçu et téléchargez le fichier.'
-                      : 'Comparez les dates, les montants et les soldes avec votre PDF, puis validez le relevé.'}
-              </p>
-            </div>
-            <span className="ui-tag">
-              {needsAdaptation ? 'Préparation' : validated ? 'Export' : 'Vérification'}
-            </span>
-          </div>
           <section ref={documentRef} className="conversion-document-card">
             <details open={!guided || editing}>
               <summary className="guided-document-summary" hidden={!guided}>
@@ -820,7 +814,9 @@ export function StatementWorkspace({
                   <FileOutput size={24} />
                 </span>
                 <div>
-                  <p className="conversion-eyebrow">RELEVÉ NORMALISÉ</p>
+                  <p className="conversion-eyebrow">
+                    {extractMode ? 'EXTRAIT DE RELEVÉ BANCAIRE' : 'RELEVÉ NORMALISÉ'}
+                  </p>
                   <h2>{draft.bankName}</h2>
                   <p>
                     {draft.statementNumber || 'Sans numéro de relevé'}
@@ -854,19 +850,25 @@ export function StatementWorkspace({
                 </div>
               </div>
               <div className="conversion-balances">
-                <div>
+                <div data-direction={Number(draft.openingBalance) < 0 ? 'debit' : 'credit'}>
                   <span>Solde initial</span>
                   <strong>
-                    {money(draft.openingBalance)} <small>{draft.currency}</small>
+                    {money(absoluteBalance(draft.openingBalance))}{' '}
+                    <small>
+                      {draft.currency} · {balanceDirection(draft.openingBalance)}
+                    </small>
                   </strong>
                 </div>
                 <span className="conversion-balance-connector" aria-hidden="true">
                   →
                 </span>
-                <div>
+                <div data-direction={Number(draft.closingBalance) < 0 ? 'debit' : 'credit'}>
                   <span>Solde final</span>
                   <strong>
-                    {money(draft.closingBalance)} <small>{draft.currency}</small>
+                    {money(absoluteBalance(draft.closingBalance))}{' '}
+                    <small>
+                      {draft.currency} · {balanceDirection(draft.closingBalance)}
+                    </small>
                   </strong>
                 </div>
               </div>
@@ -1035,7 +1037,7 @@ export function StatementWorkspace({
             tabIndex={-1}
             aria-label="Points à vérifier"
           >
-            <Diagnostics
+            <StatementDiagnostics
               errors={errors}
               warnings={warnings}
               onTransaction={can('documents.write') ? correct : undefined}
@@ -1047,28 +1049,55 @@ export function StatementWorkspace({
               <div>
                 <strong>L’export attend les mouvements du relevé.</strong>
                 <p>
-                  Les données brutes ont été conservées. Relancez l’adaptation automatique pour
-                  récupérer les mouvements et les soldes avant de préparer le fichier.
+                  La lecture automatique n’a pas reconnu tous les mouvements. Consultez le PDF
+                  original et les diagnostics, puis vérifiez les données dans le tableau.
                 </p>
               </div>
-              <Button
-                variant="outline"
-                disabled={!!busy || dirty}
-                onClick={() => setTab('extraction')}
-              >
-                Adapter le relevé
-              </Button>
             </div>
           )}
           <section className="conversion-data-card">
+            {extractMode && tab === 'preview' && (
+              <div className="statement-extract-panel">
+                <strong>
+                  {activeExtract
+                    ? 'Le modèle exporte l’extrait sauvegardé sélectionné.'
+                    : 'Toutes les opérations du PDF extrait sont converties avec le modèle choisi. Le filtrage est facultatif.'}
+                </strong>
+                {activeExtract && (
+                  <dl className="extract-totals">
+                    <div>
+                      <dt>Total débit</dt>
+                      <dd>
+                        {money(activeExtract.totalDebit)} {activeExtract.currency}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Total crédit</dt>
+                      <dd>
+                        {money(activeExtract.totalCredit)} {activeExtract.currency}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Solde (crédit − débit)</dt>
+                      <dd>
+                        {money(activeExtract.balance)} {activeExtract.currency}
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+                {extractFilterDirty && (
+                  <p role="status">
+                    Les filtres ont changé. Enregistrez l’extrait pour appliquer ces changements à
+                    l’export.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="conversion-tabs" role="tablist" aria-label="Données et export">
               {(
                 [
                   ['transactions', 'Mouvements', CheckCheck],
                   ['preview', 'Aperçu du fichier', Eye],
-                  ...(detail.extraction
-                    ? [['extraction', 'Texte lu & adaptation', Eye] as const]
-                    : []),
                   ['history', 'Historique', History],
                 ] as const
               ).map(([value, label, Icon]) => (
@@ -1111,20 +1140,6 @@ export function StatementWorkspace({
                 </button>
               ))}
             </div>
-            {tab === 'extraction' && (
-              <div
-                role="tabpanel"
-                id="conversion-panel-extraction"
-                aria-labelledby="conversion-tab-extraction"
-              >
-                <StatementExtraction
-                  detail={detail}
-                  dirty={dirty}
-                  onAdapted={onSaved}
-                  pdfSelection={pdfSelection}
-                />
-              </div>
-            )}
             {tab === 'transactions' && (
               <div
                 role="tabpanel"
@@ -1133,15 +1148,67 @@ export function StatementWorkspace({
               >
                 <div className="conversion-table-heading">
                   <div>
-                    <h3>Mouvements du relevé</h3>
-                    <p>Vérifiez les dates, montants et sens avant validation.</p>
+                    <h3>
+                      {extractMode ? 'Opérations de l’extrait bancaire' : 'Mouvements du relevé'}
+                    </h3>
+                    <p>
+                      {extractMode
+                        ? 'Filtrez les libellés par texte, puis enregistrez les lignes retenues et leurs calculs.'
+                        : 'Vérifiez les dates, montants et sens avant validation.'}
+                    </p>
                   </div>
                   <span>
-                    {Math.min((transactionPage - 1) * 50 + 1, draft.transactions.length)}–
-                    {Math.min(transactionPage * 50, draft.transactions.length)} /{' '}
-                    {draft.transactions.length}
+                    {Math.min((movementPage - 1) * 50 + 1, filteredRows.length)}–
+                    {Math.min(movementPage * 50, filteredRows.length)} / {filteredRows.length}
                   </span>
                 </div>
+                <StatementExtractPanel
+                  detail={detail}
+                  rows={filteredRows}
+                  filter={movementFilter}
+                  onBusy={(value) => setBusy(value ? 'extract' : null)}
+                  excludeText={movementExclusion}
+                  onExclusion={(text) => {
+                    if (extractMode && textEdited && !exportTextSaved && !confirmDiscard(true))
+                      return;
+                    setMovementExclusion(text);
+                    setTransactionPage(1);
+                    setSelectedRows(new Set());
+                    if (extractMode) {
+                      setPreview(null);
+                      setEditedExportText(null);
+                    }
+                  }}
+                  selectedExtractId={selectedExtractId}
+                  onSelected={(extract) => {
+                    if (textEdited && !exportTextSaved && !confirmDiscard(true)) return;
+                    setSelectedExtractId(extract.id);
+                    setMovementFilter(extract.filterText);
+                    setMovementExclusion(extract.excludeText ?? '');
+                    setPreview(null);
+                    setEditedExportText(null);
+                    setExportTextSaved(false);
+                    if (extractMode) {
+                      const params = new URLSearchParams(window.location.search);
+                      params.set('extractId', extract.id);
+                      router.replace(`/conversions?${params}`, { scroll: false });
+                    }
+                  }}
+                  onFilter={(text) => {
+                    if (extractMode && textEdited && !exportTextSaved && !confirmDiscard(true))
+                      return;
+                    setMovementFilter(text);
+                    setTransactionPage(1);
+                    setSelectedRows(new Set());
+                    if (extractMode) {
+                      setPreview(null);
+                      setEditedExportText(null);
+                    }
+                  }}
+                  disabled={!!busy || pendingCells.size > 0}
+                  dirty={dirty}
+                  onSaved={(reset) => onSaved(reset || !extractMode ? 'transactions' : 'preview')}
+                />
                 {can('documents.write') && (
                   <div className="row-editor-toolbar" aria-label="Modification des lignes">
                     <div className="row-editor-actions">
@@ -1221,7 +1288,26 @@ export function StatementWorkspace({
                   tabIndex={0}
                   aria-label="Tableau des mouvements"
                 >
-                  <table className="conversion-table">
+                  <table
+                    className="conversion-table movements-table"
+                    data-extra-columns={extraColumns || undefined}
+                  >
+                    <colgroup>
+                      {can('documents.write') && <col style={{ width: 42 }} />}
+                      <col style={{ width: 190 }} />
+                      <col style={{ width: 126 }} />
+                      <col style={{ width: 126 }} />
+                      <col className="movement-description-column" />
+                      <col style={{ width: 120 }} />
+                      <col style={{ width: 120 }} />
+                      <col style={{ width: 88 }} />
+                      <col style={{ width: 120 }} />
+                      {extraColumns &&
+                        Array.from({ length: 6 }, (_, index) => (
+                          <col key={index} style={{ width: 130 }} />
+                        ))}
+                      <col style={{ width: 108 }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         {can('documents.write') && (
@@ -1229,31 +1315,30 @@ export function StatementWorkspace({
                             <input
                               type="checkbox"
                               aria-label="Sélectionner toutes les lignes"
-                              disabled={
-                                !!busy || pendingCells.size > 0 || !draft.transactions.length
-                              }
+                              title="Sélectionner les mouvements correspondant au filtre, toutes les pages"
+                              disabled={!!busy || pendingCells.size > 0 || !filteredRows.length}
                               checked={
-                                draft.transactions.length > 0 &&
-                                selectedRows.size === draft.transactions.length
+                                filteredRows.length > 0 &&
+                                filteredRows.every((row) => selectedRows.has(row.sequence))
                               }
                               onChange={(event) =>
                                 setSelectedRows(
                                   event.target.checked
-                                    ? new Set(draft.transactions.map((row) => row.sequence))
+                                    ? new Set(filteredRows.map((row) => row.sequence))
                                     : new Set(),
                                 )
                               }
                             />
                           </th>
                         )}
-                        <th>N°</th>
+                        <th>N° / ordre</th>
                         <th>Date</th>
                         <th>Date valeur</th>
                         <th>Libellé</th>
-                        <th>Débit</th>
-                        <th>Crédit</th>
+                        <th className="conversion-money">Débit</th>
+                        <th className="conversion-money">Crédit</th>
                         <th>Sens</th>
-                        <th>Solde</th>
+                        <th className="conversion-money">Solde</th>
                         {extraColumns &&
                           [
                             'Montant',
@@ -1301,8 +1386,10 @@ export function StatementWorkspace({
                             </td>
                           )}
                           <td className="conversion-row-number">
-                            {row.sequence}
-                            {rowControls(row)}
+                            <div className="statement-order-cell">
+                              <span>{row.sequence}</span>
+                              {rowControls(row)}
+                            </div>
                           </td>
                           <td>{movementCell(row, 'date', 'Date opération', date(row.date))}</td>
                           <td>
@@ -1322,6 +1409,12 @@ export function StatementWorkspace({
                               <span className="muted">
                                 {row.reference || 'Référence facultative'}
                               </span>,
+                            )}
+                            {!!row.sourcePages?.length && (
+                              <small className="muted">
+                                À vérifier · page{row.sourcePages.length > 1 ? 's' : ''} source{' '}
+                                {row.sourcePages.join(', ')}
+                              </small>
                             )}
                           </td>
                           <td className="conversion-money">
@@ -1389,24 +1482,27 @@ export function StatementWorkspace({
                     </tbody>
                   </table>
                 </div>
-                {draft.transactions.length > 50 && (
+                {!filteredRows.length && (
+                  <p className="muted p-4" role="status">
+                    Aucun mouvement ne correspond au texte saisi.
+                  </p>
+                )}
+                {filteredRows.length > 50 && (
                   <nav className="conversion-pagination" aria-label="Pagination des mouvements">
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={transactionPage === 1 || pendingCells.size > 0}
-                      onClick={() => setTransactionPage(transactionPage - 1)}
+                      disabled={movementPage === 1 || pendingCells.size > 0}
+                      onClick={() => setTransactionPage(movementPage - 1)}
                     >
                       Précédent
                     </Button>
-                    <span>Page {transactionPage}</span>
+                    <span>Page {movementPage}</span>
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={
-                        transactionPage * 50 >= draft.transactions.length || pendingCells.size > 0
-                      }
-                      onClick={() => setTransactionPage(transactionPage + 1)}
+                      disabled={movementPage * 50 >= filteredRows.length || pendingCells.size > 0}
+                      onClick={() => setTransactionPage(movementPage + 1)}
                     >
                       Suivant
                     </Button>
@@ -1446,7 +1542,7 @@ export function StatementWorkspace({
                             ? 'Texte modifié manuellement · les diagnostics portent sur les mouvements enregistrés.'
                             : dirty
                               ? `${previewRows.length} lignes dans le brouillon · contrôles recalculés après enregistrement`
-                              : `${preview.rows.length} premières lignes sur ${preview.totalRows} · toutes les lignes ont été contrôlées`}
+                              : `${preview.totalRows} lignes · toutes les lignes sont disponibles dans l’aperçu`}
                         </p>
                       </div>
                     </div>
@@ -1514,6 +1610,24 @@ export function StatementWorkspace({
                       >
                         <Download size={16} />{' '}
                         {busy === 'download' ? 'Préparation…' : 'Télécharger'}
+                      </Button>
+                      <Button
+                        permission="documents.export"
+                        size="sm"
+                        variant="outline"
+                        disabled={!!busy || dirty || pendingCells.size > 0}
+                        onClick={() => void downloadStructured()}
+                      >
+                        <Download size={16} /> PDF structuré · 5 colonnes
+                      </Button>
+                      <Button
+                        permission="documents.export"
+                        size="sm"
+                        variant="outline"
+                        disabled={!!busy || dirty || pendingCells.size > 0}
+                        onClick={() => void downloadStructured(true)}
+                      >
+                        Rapport de contrôle
                       </Button>
                       {dirty && (
                         <Button
@@ -1640,8 +1754,23 @@ export function StatementWorkspace({
                               <tr>
                                 <th>Ligne</th>
                                 {preview.columns.map((column, index) => (
-                                  <th key={`${column}-${index}`}>{column}</th>
+                                  <th
+                                    key={`${column}-${index}`}
+                                    className={
+                                      /^(Debit|Credit|Amount|Balance|OpeningBalance|ClosingBalance)$/.test(
+                                        model?.fields
+                                          .slice()
+                                          .sort((a, b) => a.position - b.position)[index]
+                                          ?.sourceField ?? '',
+                                      )
+                                        ? 'conversion-money'
+                                        : undefined
+                                    }
+                                  >
+                                    {column}
+                                  </th>
                                 ))}
+                                <th className="conversion-preview-actions">Actions</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1664,12 +1793,16 @@ export function StatementWorkspace({
                                       {...(movement ? rowDropEvents(movement) : {})}
                                     >
                                       <td className="conversion-row-number">
-                                        {entry.kind === 'OPENING_BALANCE'
-                                          ? 'Solde initial'
-                                          : entry.kind === 'CLOSING_BALANCE'
-                                            ? 'Solde final'
-                                            : entry.sequence}
-                                        {movement && rowControls(movement)}
+                                        <div className="statement-order-cell">
+                                          <span>
+                                            {entry.kind === 'OPENING_BALANCE'
+                                              ? 'Solde initial'
+                                              : entry.kind === 'CLOSING_BALANCE'
+                                                ? 'Solde final'
+                                                : entry.sequence}
+                                          </span>
+                                          {movement && rowControls(movement)}
+                                        </div>
                                       </td>
                                       {preview.columns.map((_, column) => {
                                         const indexInRow = entry.columns?.indexOf(column) ?? column;
@@ -1681,7 +1814,18 @@ export function StatementWorkspace({
                                         ]?.sourceField;
                                         const rowKind = entry.kind;
                                         const target =
-                                          source && indexInRow >= 0
+                                          source &&
+                                          indexInRow >= 0 &&
+                                          !(
+                                            extractMode &&
+                                            [
+                                              'OpeningBalance',
+                                              'ClosingBalance',
+                                              'Balance',
+                                              'TotalDebit',
+                                              'TotalCredit',
+                                            ].includes(source)
+                                          )
                                             ? previewEditTarget(
                                                 draft,
                                                 movement,
@@ -1722,6 +1866,7 @@ export function StatementWorkspace({
                                         return (
                                           <td
                                             key={column}
+                                            data-cell-kind={target?.kind}
                                             className={`conversion-preview-cell ${model?.fields.some((field) => field.fieldName === preview.columns[column] && field.sourceField === 'Description') || /libell|description|designation|détails|details/i.test(preview.columns[column]) ? 'conversion-preview-description' : ''} ${indexInRow < 0 ? 'omitted' : ''}`}
                                             title={cell || undefined}
                                           >
@@ -1784,6 +1929,47 @@ export function StatementWorkspace({
                                           </td>
                                         );
                                       })}
+                                      <td className="conversion-preview-actions">
+                                        {movement && (
+                                          <div className="row-inline-actions">
+                                            <button
+                                              type="button"
+                                              className="conversion-row-edit"
+                                              aria-label={`Modifier la ligne ${movement.sequence} dans l’aperçu`}
+                                              title="Modifier directement les cellules"
+                                              disabled={
+                                                !!busy ||
+                                                pendingCells.size > 0 ||
+                                                !can('documents.write')
+                                              }
+                                              onClick={(event) => {
+                                                const cell = event.currentTarget
+                                                  .closest('tr')
+                                                  ?.querySelector<HTMLButtonElement>(
+                                                    '.statement-cell-button:not(:disabled)',
+                                                  );
+                                                cell?.focus();
+                                                cell?.click();
+                                              }}
+                                            >
+                                              <Pencil size={15} />
+                                            </button>
+                                            {can('documents.write') && (
+                                              <button
+                                                type="button"
+                                                className="conversion-row-edit danger-row-action"
+                                                aria-label={`Supprimer la ligne ${movement.sequence} dans l’aperçu`}
+                                                disabled={!!busy || pendingCells.size > 0}
+                                                onClick={() =>
+                                                  setDeletingRows(new Set([movement.sequence]))
+                                                }
+                                              >
+                                                <Trash2 size={15} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -1837,40 +2023,13 @@ export function StatementWorkspace({
         </div>
         {detail.sourceFileName && (
           <StatementPdfPanel
+            extractId={extractMode ? activeExtract?.id : undefined}
+            version={detail.version}
+            unsaved={dirty || extractFilterDirty || pendingCells.size > 0}
             collapsed={!showPdfTools}
             onToggle={() => setShowPdfTools(!showPdfTools)}
             id={detail.id}
-            hasExtraction={!!detail.extraction}
-            rows={draft.transactions}
-            disabled={!!busy || pendingCells.size > 0}
-            onSelection={setPdfSelection}
-            onApply={(sequence, field, value) => {
-              if (!can('documents.write') || busy) return false;
-              if (sequence === null) {
-                if (!update(field as keyof BankStatement, value)) return false;
-                setReviewConfirmed(false);
-                setError('');
-                return true;
-              }
-              const changed = commitRows(
-                draft.transactions.map((row) =>
-                  row.sequence === sequence
-                    ? editTransactionValue(row, field as EditableTransactionField, value)
-                    : row,
-                ),
-                `Ligne ${sequence} corrigée depuis le PDF.`,
-              );
-              if (changed)
-                setTransactionPage(
-                  Math.max(
-                    1,
-                    Math.ceil(
-                      (draft.transactions.findIndex((row) => row.sequence === sequence) + 1) / 50,
-                    ),
-                  ),
-                );
-              return changed;
-            }}
+            hasRows={draft.transactions.length > 0}
           />
         )}
       </div>
@@ -2172,16 +2331,7 @@ export function StatementWorkspace({
                   {busy === 'preview' ? 'Vérification…' : 'Aperçu'}
                 </Button>
                 <Button
-                  disabled={
-                    !model?.isActive ||
-                    !!busy ||
-                    dirty ||
-                    pendingCells.size > 0 ||
-                    (!allowExportErrors &&
-                      !!preview &&
-                      preview.template.id === model.id &&
-                      preview.errors.some((issue) => issue.code !== 'STATEMENT_NOT_VALIDATED'))
-                  }
+                  disabled={!model?.isActive || !!busy || dirty || pendingCells.size > 0}
                   permission="documents.export"
                   onClick={() => void download()}
                 >
@@ -2190,11 +2340,7 @@ export function StatementWorkspace({
                   ) : (
                     <Download size={17} />
                   )}
-                  {busy === 'download'
-                    ? 'Préparation…'
-                    : allowExportErrors
-                      ? 'Télécharger avec erreurs'
-                      : 'Télécharger'}
+                  {busy === 'download' ? 'Préparation…' : 'Télécharger avec erreurs'}
                 </Button>
               </div>
               <p className="conversion-download-note">
@@ -2202,17 +2348,7 @@ export function StatementWorkspace({
                   ? 'Votre profil ne dispose pas de la permission de télécharger les exports.'
                   : !model
                     ? 'Sélectionnez un modèle Sage X3, Sage 100 ou CSV pour préparer votre fichier.'
-                    : allowExportErrors
-                      ? 'Le fichier sera archivé avec la mention « à vérifier ». Les diagnostics et le statut du relevé restent conservés.'
-                      : textEdited
-                        ? 'Le téléchargement utilisera le texte modifié visible dans l’aperçu.'
-                        : needsAdaptation
-                          ? 'Adaptez le relevé pour renseigner les mouvements et les soldes.'
-                          : !validated
-                            ? 'Vérifiez puis validez le relevé pour autoriser le téléchargement.'
-                            : preview?.errors.length
-                              ? 'Corrigez les erreurs indiquées pour télécharger le fichier.'
-                              : 'Le fichier respecte les colonnes et réglages enregistrés. Le compte est masqué dans son nom.'}
+                    : 'Le fichier sera archivé avec la mention « à vérifier ». Les diagnostics et le statut du relevé restent conservés.'}
               </p>
             </section>
           )}

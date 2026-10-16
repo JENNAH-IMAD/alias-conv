@@ -51,6 +51,10 @@ export type Dashboard = {
   banks: number;
   accounts: number;
   statements: number;
+  statementDocuments: number;
+  extracts: number;
+  statementExports: number;
+  extractExports: number;
   exports: number;
   unassigned: number;
   pendingReview: number;

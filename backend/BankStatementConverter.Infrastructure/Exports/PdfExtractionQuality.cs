@@ -7,8 +7,9 @@ internal static class PdfExtractionQuality
 {
     internal static int Defects(PdfStatementExtraction extraction)
     {
-        var s = extraction.Statement;
-        if (s.Transactions.Count == 0) return int.MaxValue;
+        var s = BankStatementConverter.Domain.StatementAmounts.Normalize(extraction.Statement);
+        if (s.Transactions.Count == 0)
+            return int.MaxValue;
         var missing = s.Transactions.Sum(t => (t.Date.HasValue ? 0 : 1)
             + (string.IsNullOrWhiteSpace(t.Description) ? 1 : 0)
             + (t.Debit.HasValue != t.Credit.HasValue ? 0 : 1));
@@ -21,7 +22,8 @@ internal static class PdfExtractionQuality
 
     internal static bool Improves(PdfStatementExtraction candidate, PdfStatementExtraction current)
     {
-        if (Defects(candidate) >= Defects(current)) return false;
+        if (Defects(candidate) >= Defects(current))
+            return false;
         // A different row count is accepted only with an independently reconciled opening/closing
         // balance. This prevents a smaller, incomplete table from winning by having fewer errors.
         return candidate.Statement.Transactions.Count == current.Statement.Transactions.Count

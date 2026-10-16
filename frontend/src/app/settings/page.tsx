@@ -21,7 +21,7 @@ export default function OcrSettingsPage() {
   const api = useApi<OcrSettings>(user?.role === 'Admin' ? '/settings/ocr' : null);
   if (user?.role !== 'Admin') return null;
   return (
-    <div className="ui-page">
+    <div className="ui-page settings-page">
       <PageHeader
         icon={ScanLine}
         eyebrow="Administration"
@@ -56,7 +56,7 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
   // The API never returns the token, including after saving.
   return (
     <form
-      className="ui-card space-y-6 max-w-3xl"
+      className="ui-card settings-form space-y-6"
       onSubmit={async (event) => {
         event.preventDefault();
         if (busy) return;

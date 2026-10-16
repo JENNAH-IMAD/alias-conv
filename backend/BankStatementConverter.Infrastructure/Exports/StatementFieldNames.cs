@@ -23,7 +23,13 @@ public static class StatementFieldNames
     };
     public static string? Column(string text)
     {
-        var label = Fold(text);
+        var label = Fold(Regex.Replace(text, @"\\text\s*\{([^}]*)\}", "$1"));
+        if (label is "DATES OPERATION" or "DATES OPER")
+            return "Date";
+        if (label is "DATES VALEUR" or "DATES DATE VALEUR")
+            return "ValueDate";
+        if (label == "OPERATION REFERENCE")
+            return "Description";
         // Currency decorations do not change the meaning of a column.
         label = Regex.Replace(label, @"\s+(?:EN\s+)?(MAD|DH|DHS|EUR|USD|GBP|CHF|DIRHAMS|DIRHAM|EUROS)$", "");
         return Names.FirstOrDefault(pair => pair.Value.Contains(label)).Key;
@@ -36,7 +42,8 @@ public static class StatementFieldNames
     public static string? Balance(string text)
     {
         var label = Fold(text);
-        if (!IsBalance(text) || IsAvailableBalance(text) || Regex.IsMatch(label, @"\bREPORT(?:E)? (?:DE )?(PAGE|INTERMEDIAIRE)\b")) return null;
+        if (!IsBalance(text) || IsAvailableBalance(text) || Regex.IsMatch(label, @"\bREPORT(?:E)? (?:DE )?(PAGE|INTERMEDIAIRE)\b"))
+            return null;
         var opening = Regex.IsMatch(label, @"\b(INITIAL|INITIALS|ANCIEN|PRECEDENT|ANTERIEUR|REPORTE|DEPART|OUVERTURE|DEBUT|OPENING|PREVIOUS|BEGINNING|BROUGHT FORWARD)\b");
         var closing = Regex.IsMatch(label, @"\b(FINAL|FIN|CLOTURE|NOUVEAU|CLOSING|ENDING|CARRIED FORWARD)\b");
         return opening == closing ? null : opening ? "OpeningBalance" : "ClosingBalance";

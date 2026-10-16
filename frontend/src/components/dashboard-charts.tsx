@@ -218,7 +218,7 @@ export function StatusChart({ statuses }: { statuses: Dashboard['statuses'] }) {
         <svg
           viewBox="0 0 180 180"
           role="img"
-          aria-label={`Répartition des ${total} relevés par statut`}
+          aria-label={`Répartition des ${total} documents bancaires par statut`}
         >
           <circle cx="90" cy="90" r="70" fill="none" stroke="var(--surface-alt)" strokeWidth="19" />
           {statuses
@@ -251,7 +251,7 @@ export function StatusChart({ statuses }: { statuses: Dashboard['statuses'] }) {
         </svg>
         <div>
           <strong>{total.toLocaleString('fr-FR')}</strong>
-          <span>relevés</span>
+          <span>documents</span>
         </div>
       </div>
       <ul className="overview-status-list">

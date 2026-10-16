@@ -1,7 +1,10 @@
 using BankStatementConverter.Domain;
 namespace BankStatementConverter.Application;
 
-public class AppException(int status, string message) : Exception(message) { public int Status { get; } = status; }
+public class AppException(int status, string message) : Exception(message)
+{
+    public int Status { get; } = status;
+}
 public record PageResult<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);
 public record ClientDto(Guid Id, string Name, string LegalName, string ICE, string IF, string RC, string Email, string Phone, string Country, string[] Banks, string Status = "Actif", Guid? PhotoVersion = null);
 public record ClientInput(string Name, string LegalName, string ICE, string IF, string RC, string Email, string Phone, string Country = "Maroc");

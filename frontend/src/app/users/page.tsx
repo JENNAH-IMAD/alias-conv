@@ -1,6 +1,17 @@
 'use client';
 import { FormEvent, useState } from 'react';
-import { Users, UserPlus, ShieldCheck, UserCheck, Pencil, Shield, KeyRound } from 'lucide-react';
+import {
+  Users,
+  UserPlus,
+  ShieldCheck,
+  UserCheck,
+  Pencil,
+  Shield,
+  KeyRound,
+  Trash2,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BankDialog } from '@/components/bank-dialogs';
 import { LoadState } from '@/components/ui/load-state';
@@ -13,6 +24,10 @@ import { PageHeader } from '@/components/page-header';
 type Permission = { key: string; group: string; label: string; requires: string[] };
 type Catalog = { permissions: Permission[]; presets: { reader: string[]; accountant: string[] } };
 export default function UsersPage() {
+  const auth = useAuth();
+  const [deleting, setDeleting] = useState<WorkspaceUser | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<WorkspaceUser | null | undefined>();
   const users = useApi<Page<WorkspaceUser>>(`/users?page=${page}&pageSize=20`);
@@ -104,16 +119,33 @@ export default function UsersPage() {
                       : 'Jamais'}
                   </td>
                   <td data-label="Gestion">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      aria-label={`Gérer ${user.name}`}
-                      disabled={!catalog.data}
-                      onClick={() => setEditing(user)}
-                    >
-                      <Pencil size={15} />
-                      Gérer
-                    </Button>
+                    <div className="team-management-actions">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-label={`Gérer ${user.name}`}
+                        disabled={!catalog.data}
+                        onClick={() => setEditing(user)}
+                      >
+                        <Pencil size={15} />
+                        Gérer
+                      </Button>
+                      {auth.user?.role === 'Admin' && (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          aria-label={`Supprimer ${user.name}`}
+                          disabled={user.id === auth.user.id}
+                          onClick={() => {
+                            setDeleting(user);
+                            setDeleteError('');
+                          }}
+                        >
+                          <Trash2 size={15} />
+                          Supprimer
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -122,6 +154,54 @@ export default function UsersPage() {
         </section>
       )}
       {users.data && <Pagination page={page} total={users.data.total} onChange={setPage} />}
+      {deleting && (
+        <BankDialog
+          title="Supprimer un utilisateur"
+          busy={deleteBusy}
+          onClose={() => setDeleting(null)}
+        >
+          <p>
+            Supprimer le compte de <strong>{deleting.name}</strong> ({deleting.email}) ?
+          </p>
+          <p className="muted text-sm mt-3">
+            Ses sessions seront fermées. Les relevés et les actions déjà enregistrées dans
+            l’historique seront conservés.
+          </p>
+          {deleteError && (
+            <p role="alert" className="conversion-alert error mt-3">
+              {deleteError}
+            </p>
+          )}
+          <div className="flex flex-wrap justify-end gap-3 mt-6">
+            <Button variant="outline" disabled={deleteBusy} onClick={() => setDeleting(null)}>
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              disabled={deleteBusy}
+              onClick={async () => {
+                setDeleteBusy(true);
+                setDeleteError('');
+                try {
+                  await request(`/users/${deleting.id}?version=${deleting.version}`, {
+                    method: 'DELETE',
+                  });
+                  setDeleting(null);
+                  if (users.data?.items.length === 1 && page > 1) setPage(page - 1);
+                  else users.reload();
+                } catch (error) {
+                  setDeleteError((error as Error).message);
+                } finally {
+                  setDeleteBusy(false);
+                }
+              }}
+            >
+              <Trash2 size={15} />
+              {deleteBusy ? 'Suppression…' : 'Supprimer le compte'}
+            </Button>
+          </div>
+        </BankDialog>
+      )}
       <p className="muted text-xs flex items-center gap-2">
         <Shield size={15} />
         La désactivation, le changement des droits ou du mot de passe révoquent les sessions en
@@ -159,6 +239,7 @@ function UserEditor({
   const [active, setActive] = useState(user?.isActive ?? true);
   const [permissions, setPermissions] = useState(user?.permissions ?? catalog.presets.reader);
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   function toggle(key: string, checked: boolean) {
@@ -215,12 +296,24 @@ function UserEditor({
     <BankDialog
       title={user ? `Gérer ${user.name}` : 'Ajouter un collaborateur'}
       wide
+      className="user-editor-dialog"
       busy={busy}
       onClose={onClose}
     >
-      <form onSubmit={save} className="space-y-5">
+      <form onSubmit={save} className="space-y-5 user-editor-form">
         <fieldset disabled={busy} className="space-y-5">
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="user-editor-intro">
+            <span className="user-editor-avatar">
+              <UserPlus size={22} />
+            </span>
+            <div>
+              <h3>
+                {user ? 'Profil et accès du collaborateur' : 'Un nouvel accès à votre espace'}
+              </h3>
+              <p>Renseignez les informations du compte, puis choisissez ses permissions.</p>
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4 user-account-fields">
             <label className="text-sm">
               Nom
               <input
@@ -255,21 +348,41 @@ function UserEditor({
                 <option value="Admin">Administrateur — tous les droits</option>
               </select>
             </label>
-            <label className="text-sm">
-              {user ? 'Nouveau mot de passe (facultatif)' : 'Mot de passe'}
-              <input
-                type="password"
-                required={!user}
-                minLength={12}
-                maxLength={128}
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="ui-input mt-2"
-              />
-            </label>
+            <div className="text-sm user-password-field">
+              <label htmlFor="user-editor-password">
+                {user ? 'Nouveau mot de passe (facultatif)' : 'Mot de passe'}
+              </label>
+              <div className="user-password-control">
+                <input
+                  id="user-editor-password"
+                  type={showPassword ? 'text' : 'password'}
+                  required={!user}
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="ui-input"
+                />
+                <button
+                  type="button"
+                  className="user-password-toggle"
+                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  aria-pressed={showPassword}
+                  aria-controls="user-editor-password"
+                  onClick={() => setShowPassword((value) => !value)}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              <small className="user-password-hint">
+                {user
+                  ? 'Laissez vide pour conserver le mot de passe actuel.'
+                  : '12 caractères minimum.'}
+              </small>
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm user-account-status">
             <input
               type="checkbox"
               disabled={self}
@@ -292,7 +405,14 @@ function UserEditor({
             </div>
           ) : (
             <>
-              <div className="flex gap-2 flex-wrap">
+              <div className="user-permissions-heading">
+                <div>
+                  <h3>Permissions du collaborateur</h3>
+                  <p>Choisissez un profil ou ajustez les droits ci-dessous.</p>
+                </div>
+                <span>{permissions.length} droit(s) sélectionné(s)</span>
+              </div>
+              <div className="flex gap-2 flex-wrap user-permission-presets">
                 <Button
                   type="button"
                   variant="outline"

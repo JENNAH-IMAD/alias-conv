@@ -18,14 +18,16 @@ public class CatalogDeletionService(AppDbContext db)
         };
         var accounts = await db.BankAccounts.Where(a => resource == "banks" ? a.BankId == id : a.ClientId == id).ToListAsync(ct);
         var ids = accounts.Select(x => x.Id).ToArray();
-        if(await db.StatementImports.AnyAsync(s=>(resource=="clients" && s.ClientId==id) || (s.BankAccountId.HasValue && ids.Contains(s.BankAccountId.Value)),ct))
-            throw new AppException(409,"Ce client ou cette banque possède des conversions archivées. Conservez ce référentiel pour préserver leur historique.");
+        if (await db.StatementImports.AnyAsync(s => (resource == "clients" && s.ClientId == id) || (s.BankAccountId.HasValue && ids.Contains(s.BankAccountId.Value)), ct))
+            throw new AppException(409, "Ce client ou cette banque possède des conversions archivées. Conservez ce référentiel pour préserver leur historique.");
         var documents = await db.Documents.Where(d => (resource == "clients" && d.ClientId == id) || ids.Contains(d.BankAccountId)).ToListAsync(ct);
         return (parent, accounts, documents);
     }
     private static DeletionPreview Describe((Entity Parent, List<BankAccount> Accounts, List<Document> Documents) plan)
     {
-        var entities = new List<Entity> { plan.Parent }; entities.AddRange(plan.Accounts); entities.AddRange(plan.Documents);
+        var entities = new List<Entity> { plan.Parent };
+        entities.AddRange(plan.Accounts);
+        entities.AddRange(plan.Documents);
         var stamp = string.Join("|", entities.OrderBy(e => e.Id).Select(e => $"{e.Id}:{e.UpdatedAt.Ticks}"));
         return new(plan.Parent is Bank b ? b.Name : ((Client)plan.Parent).Name, plan.Accounts.Count, plan.Documents.Count,
             plan.Documents.Select(d => d.StorageKey).Distinct().Count(), Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(stamp))));
@@ -36,10 +38,19 @@ public class CatalogDeletionService(AppDbContext db)
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlRawAsync("LOCK TABLE \"Documents\", \"BankAccounts\", \"Clients\", \"Banks\" IN SHARE ROW EXCLUSIVE MODE", ct);
         var plan = await Load(resource, id, ct);
-        if (Describe(plan).Version != version) throw new AppException(409, "Les éléments liés ont changé. Rouvrez la confirmation.");
-        foreach (var key in plan.Documents.Select(d => d.StorageKey).Distinct()) db.PendingFileDeletions.Add(new() { StorageKey = key });
-        db.Documents.RemoveRange(plan.Documents); await db.SaveChangesAsync(ct);
-        db.BankAccounts.RemoveRange(plan.Accounts); await db.SaveChangesAsync(ct);
-        db.Remove(plan.Parent); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+        if (Describe(plan).Version != version)
+            throw new AppException(409, "Les éléments liés ont changé. Rouvrez la confirmation.");
+        foreach (var key in plan.Documents.Select(d => d.StorageKey).Distinct())
+            db.PendingFileDeletions.Add(new()
+            {
+                StorageKey = key
+            });
+        db.Documents.RemoveRange(plan.Documents);
+        await db.SaveChangesAsync(ct);
+        db.BankAccounts.RemoveRange(plan.Accounts);
+        await db.SaveChangesAsync(ct);
+        db.Remove(plan.Parent);
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
     }
 }

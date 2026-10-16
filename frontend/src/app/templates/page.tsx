@@ -9,6 +9,7 @@ import { useApi } from '@/services/use-api';
 import { Copy, FileOutput, Pencil, Plus, Trash2, Columns3 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { LoadState } from '@/components/ui/load-state';
+import { Pagination } from '@/components/ui/pagination';
 
 export default function TemplatesPage() {
   const [page, setPage] = useState(1);
@@ -135,7 +136,7 @@ export default function TemplatesPage() {
             <div className="template-field-summary">
               <strong>
                 <Columns3 size={15} />
-                {model.fields.length} colonnes
+                {model.fields.length} colonne{model.fields.length > 1 ? 's' : ''}
               </strong>
               <div>
                 {model.fields
@@ -188,30 +189,14 @@ export default function TemplatesPage() {
         ))}
       </section>
       {data && (
-        <nav
-          aria-label="Pagination des modèles"
-          className="flex flex-wrap items-center justify-between gap-4"
-        >
-          <p>
-            {data.total} modèle(s) · Page {page} sur {Math.max(1, Math.ceil(data.total / 20))}
-          </p>
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              disabled={page === 1 || loading}
-              onClick={() => setPage(page - 1)}
-            >
-              Précédent
-            </Button>
-            <Button
-              variant="outline"
-              disabled={page * 20 >= data.total || loading}
-              onClick={() => setPage(page + 1)}
-            >
-              Suivant
-            </Button>
-          </div>
-        </nav>
+        <Pagination
+          label="Pagination des modèles"
+          itemLabel="modèle(s)"
+          page={page}
+          total={data.total}
+          loading={loading}
+          onChange={setPage}
+        />
       )}
     </div>
   );

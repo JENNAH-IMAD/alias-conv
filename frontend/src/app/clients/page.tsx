@@ -152,7 +152,7 @@ export default function ClientsPage() {
               )}
             </div>
             {
-              <div className="client-actions flex-wrap gap-2">
+              <div className="client-actions catalog-card-actions flex-wrap gap-2">
                 <Link className="button-secondary" href={`/client-workspace?clientId=${client.id}`}>
                   Archives
                 </Link>

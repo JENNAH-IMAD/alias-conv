@@ -6,7 +6,10 @@ namespace BankStatementConverter.Infrastructure;
 public static class MoroccanBankCatalog
 {
     // Périmètre choisi par l'utilisateur ; les logos sont gérés manuellement.
-    public static IReadOnlyList<(string Name, string Code)> Entries { get; } = new[]
+    public static IReadOnlyList<(string Name, string Code)> Entries
+    {
+        get;
+    } = new[]
     {
         ("Attijariwafa Bank", "AWB"),
         ("Al Barid Bank", "ABB"), ("Banque Populaire", "BP"),
@@ -21,8 +24,12 @@ public static class MoroccanBankCatalog
         return Entries.Where(entry => !banks.Any(bank =>
             bank.Code.Equals(entry.Code, StringComparison.OrdinalIgnoreCase) ||
             IdentityCodes(bank.Name).Contains(entry.Code)))
-            .Select(entry => new Bank { Name = entry.Name, Code = entry.Code,
-                Description = "Établissement bancaire marocain." })
+            .Select(entry => new Bank
+            {
+                Name = entry.Name,
+                Code = entry.Code,
+                Description = "Établissement bancaire marocain."
+            })
             .ToArray();
     }
 
@@ -30,10 +37,18 @@ public static class MoroccanBankCatalog
     {
         var normalized = Normalize(name);
         return Entries.Where(e => normalized.Contains(Normalize(e.Code switch
-            {
-                "CA" => "Crédit Agricole", "AWB" => "Attijariwafa", "BMCE" => "Bank of Africa","BP"=> "Banque Populaire", "ABB" => "Al Barid Bank", "CIH" => "CIH Bank", "CDM" => "Crédit du Maroc",
-                "SB" => "Saham Bank", "CFG" => "CFG", _ => e.Name
-            }), StringComparison.Ordinal) || System.Text.RegularExpressions.Regex.IsMatch(normalized, @"\b" + e.Code + @"\b"))
+        {
+            "CA" => "Crédit Agricole",
+            "AWB" => "Attijariwafa",
+            "BMCE" => "Bank of Africa",
+            "BP" => "Banque Populaire",
+            "ABB" => "Al Barid Bank",
+            "CIH" => "CIH Bank",
+            "CDM" => "Crédit du Maroc",
+            "SB" => "Saham Bank",
+            "CFG" => "CFG",
+            _ => e.Name
+        }), StringComparison.Ordinal) || System.Text.RegularExpressions.Regex.IsMatch(normalized, @"\b" + e.Code + @"\b"))
             .Select(e => e.Code).ToArray();
     }
     private static string Normalize(string value) => new string(value.Normalize(System.Text.NormalizationForm.FormD)

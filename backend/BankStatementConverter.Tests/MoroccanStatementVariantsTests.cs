@@ -16,11 +16,14 @@ public class MoroccanStatementVariantsTests
         Text("SPECIMEN FICTIF", 30, 20);
         var headers = new[] { "Date", "Valeur", "Libellé", "Débit", "Crédit" };
         var positions = new[] { 30d, 110d, 210d, 450d, 530d };
-        for (var c = 0; c < headers.Length; c++) Text(headers[c], positions[c], 80);
+        for (var c = 0; c < headers.Length; c++)
+            Text(headers[c], positions[c], 80);
         for (var r = 0; r < rows.Length; r++)
             for (var c = 0; c < rows[r].Length; c++)
-                if (rows[r][c] != "") Text(rows[r][c], positions[c], 110 + r * 30);
-        if (totals != "") Text(totals, 30, 110 + rows.Length * 30);
+                if (rows[r][c] != "")
+                    Text(rows[r][c], positions[c], 110 + r * 30);
+        if (totals != "")
+            Text(totals, 30, 110 + rows.Length * 30);
         var tables = structured ? PaddleDocumentParser.Tables("<table>" +
             string.Join("", new[] { headers }.Concat(rows).Select(row => "<tr>" +
                 string.Join("", row.Select(cell => "<td>" + System.Net.WebUtility.HtmlEncode(cell) + "</td>")) + "</tr>")) + "</table>") : null;
@@ -29,17 +32,23 @@ public class MoroccanStatementVariantsTests
 
     private static BankStatement Metadata(DateOnly? start = null, DateOnly? end = null,
         decimal opening = 100m, decimal closing = 150m) => new()
-    {
-        BankName = "Banque de test", BankCode = "TEST", Currency = "MAD",
-        PeriodStart = start ?? new DateOnly(2025, 7, 1), PeriodEnd = end ?? new DateOnly(2025, 7, 31),
-        OpeningBalance = opening, ClosingBalance = closing
-    };
+        {
+            BankName = "Banque de test",
+            BankCode = "TEST",
+            Currency = "MAD",
+            PeriodStart = start ?? new DateOnly(2025, 7, 1),
+            PeriodEnd = end ?? new DateOnly(2025, 7, 31),
+            OpeningBalance = opening,
+            ClosingBalance = closing
+        };
 
     private static PdfStatementExtraction Extract(bool structured, string[][] rows, BankStatement? metadata = null, string totals = "") =>
         new StatementPdfExtractor().Normalize(Document(structured, rows, totals), "Banque de test", "TEST", "MAD", default,
             metadata: metadata ?? Metadata());
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void DescendingDatesNegativeDebitsAndDuplicateMovementsRemainDistinct(bool structured)
     {
         var result = Extract(structured, [
@@ -52,11 +61,14 @@ public class MoroccanStatementVariantsTests
         Assert.Equal(new DateOnly(2025, 7, 5), s.Transactions[1].Date);
         Assert.Equal(10m, s.Transactions[1].Debit);
         Assert.Equal(10m, s.Transactions[2].Amount);
-        Assert.Equal(20m, s.TotalDebit); Assert.Equal(70m, s.TotalCredit);
+        Assert.Equal(20m, s.TotalDebit);
+        Assert.Equal(70m, s.TotalCredit);
         Assert.Empty(new StatementValidator().Validate(s).Errors);
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void OperationAndValueYearsAreResolvedIndependentlyAcrossDecemberJanuary(bool structured)
     {
         var s = Extract(structured, [
@@ -71,9 +83,12 @@ public class MoroccanStatementVariantsTests
     }
 
     [Theory]
-    [InlineData(false, "1,234.56")] [InlineData(true, "1,234.56")]
-    [InlineData(false, "1.234,56")] [InlineData(true, "1.234,56")]
-    [InlineData(false, "1 234,56")] [InlineData(true, "1 234,56")]
+    [InlineData(false, "1,234.56")]
+    [InlineData(true, "1,234.56")]
+    [InlineData(false, "1.234,56")]
+    [InlineData(true, "1.234,56")]
+    [InlineData(false, "1 234,56")]
+    [InlineData(true, "1 234,56")]
     public void NumericConventionsPreserveExactAmounts(bool structured, string amount)
     {
         var s = Extract(structured, [["02/07/25", "02/07/25", "DEPOT FICTIF", "", amount]],
@@ -83,18 +98,23 @@ public class MoroccanStatementVariantsTests
         Assert.Empty(new StatementValidator().Validate(s).Errors);
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void PrintedTotalsIncludingOpeningAreNotCountedTwice(bool structured)
     {
         var result = Extract(structured, [
             ["02/07/25", "02/07/25", "ACHAT FICTIF", "50,00", ""],
             ["03/07/25", "03/07/25", "DEPOT FICTIF", "", "100,00"]], totals: "TOTAL 50,00 200,00");
-        Assert.Equal(50m, result.Statement.TotalDebit); Assert.Equal(100m, result.Statement.TotalCredit);
+        Assert.Equal(50m, result.Statement.TotalDebit);
+        Assert.Equal(100m, result.Statement.TotalCredit);
         Assert.Contains(result.Warnings, w => w.Code == "PDF_TOTALS_INCLUDE_OPENING_BALANCE");
         Assert.Empty(new StatementValidator().Validate(result.Statement).Errors);
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void ShortDatesPreferTheStatementPeriodAndValueDatesFollowTheOperation(bool structured)
     {
         var s = Extract(structured, [
@@ -107,7 +127,9 @@ public class MoroccanStatementVariantsTests
         Assert.Empty(new StatementValidator().Validate(s).Errors);
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void InvalidDatesAndMalformedAmountsAreNotGuessed(bool structured)
     {
         var result = Extract(structured, [["31/09/25", "31/09/25", "DEPOT FICTIF", "", "50,00"]]);
@@ -126,7 +148,9 @@ public class MoroccanStatementVariantsTests
         Assert.NotEmpty(new StatementValidator().Validate(result.Statement).Errors);
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void AmericanPrintedTotalsHaveTheSameMagnitudeAsTheirMovements(bool structured)
     {
         var result = Extract(structured, [["02/07/25", "02/07/25", "DEPOT FICTIF", "", "1,234.56"]],
@@ -136,7 +160,9 @@ public class MoroccanStatementVariantsTests
         Assert.Empty(new StatementValidator().Validate(result.Statement).Errors);
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void ContradictoryPrintedTotalsRemainValidationErrors(bool structured)
     {
         var result = Extract(structured, [["02/07/25", "02/07/25", "DEPOT FICTIF", "", "50,00"]],

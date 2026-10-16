@@ -15,7 +15,11 @@ public class StatementAdaptationMetadataTests
         var metadata = StatementAdaptationMetadata.ForReplay(old, Computed);
         Assert.Null(metadata.TotalDebit);
         Assert.Null(metadata.TotalCredit);
-        Assert.Equal(old with { TotalDebit = null, TotalCredit = null }, metadata);
+        Assert.Equal(old with
+        {
+            TotalDebit = null,
+            TotalCredit = null
+        }, metadata);
     }
 
     [Fact]
@@ -28,7 +32,10 @@ public class StatementAdaptationMetadataTests
     [Fact]
     public void ReplayKeepsManualCorrectionsAndReleasesOnlyUnchangedComputedTotals()
     {
-        var old = ExportFixtures.Statement with { TotalDebit = 140m };
+        var old = ExportFixtures.Statement with
+        {
+            TotalDebit = 140m
+        };
         var metadata = StatementAdaptationMetadata.ForReplay(old, Computed);
         Assert.Equal(140m, metadata.TotalDebit);
         Assert.Null(metadata.TotalCredit);

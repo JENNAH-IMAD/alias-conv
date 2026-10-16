@@ -30,6 +30,7 @@ function ConversionStudio() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [importing, setImporting] = useState(false);
+  const [importType, setImportType] = useState<'STATEMENT' | 'EXTRACT'>('STATEMENT');
   const queryImport = searchParams.get('import') === '1';
   const selectedId = searchParams.get('statementId');
   const [templateId, setTemplateId] = useState(searchParams.get('templateId') || '');
@@ -45,16 +46,23 @@ function ConversionStudio() {
     (!detail.data || prepared.detail.version >= detail.data.version)
       ? prepared.detail
       : detail.data;
+  function startConversion(type: 'STATEMENT' | 'EXTRACT') {
+    if (!confirmDiscard(hasUnsavedChanges())) return;
+    setImportType(type);
+    setImporting(true);
+  }
   return (
     <div className="conversion-page">
       {importing || queryImport ? (
         <StatementImportDialog
+          initialConversionType={searchParams.get('type') === 'extract' ? 'EXTRACT' : importType}
           initialClientId={searchParams.get('clientId') || ''}
           onClose={() => {
             setImporting(false);
             if (queryImport) {
               const params = new URLSearchParams(searchParams.toString());
               params.delete('import');
+              params.delete('type');
               router.replace(`/conversions${params.size ? `?${params}` : ''}`, { scroll: false });
             }
           }}
@@ -62,7 +70,10 @@ function ConversionStudio() {
             setImporting(false);
             setPrepared(null);
             setTemplateId('');
-            router.replace(`/conversions?statementId=${record.id}&step=model`, { scroll: false });
+            router.replace(
+              `/conversions?statementId=${record.id}&step=model${record.statement.conversionType === 'EXTRACT' ? '&type=extract' : ''}`,
+              { scroll: false },
+            );
           }}
         />
       ) : (
@@ -73,7 +84,7 @@ function ConversionStudio() {
                 <p className="conversion-eyebrow">
                   <span /> CONVERSION & EXPORT
                 </p>
-                <h1>Convertissez vos relevés en toute simplicité.</h1>
+                <h1>Convertir vos relevés et extraits bancaires</h1>
                 <p>Un PDF, un modèle et un résultat contrôlé avant le téléchargement.</p>
                 <div className="conversion-hero-steps">
                   <span>
@@ -97,19 +108,6 @@ function ConversionStudio() {
                   </span>
                 </div>
               </div>
-              <div className="conversion-hero-action">
-                <Button
-                  permission="documents.write"
-                  size="lg"
-                  onClick={() => {
-                    if (confirmDiscard(hasUnsavedChanges())) setImporting(true);
-                  }}
-                >
-                  <Plus size={17} />
-                  Importer un relevé
-                </Button>
-                <span>Relevés bancaires PDF · jusqu’à 20 Mo</span>
-              </div>
               <ArrowRightLeft className="conversion-hero-art" aria-hidden="true" />
             </section>
           )}
@@ -132,7 +130,12 @@ function ConversionStudio() {
                   currentDetail &&
                   (flowStep === 'model' ? (
                     <StatementModelStep
+                      extractId={searchParams.get('extractId') ?? undefined}
                       detail={currentDetail}
+                      extractMode={
+                        currentDetail.statement.conversionType === 'EXTRACT' ||
+                        searchParams.get('type') === 'extract'
+                      }
                       templates={templates.data || []}
                       templateId={templateId}
                       onTemplate={setTemplateId}
@@ -143,7 +146,7 @@ function ConversionStudio() {
                       onPrepared={(result) => {
                         setPrepared(result);
                         router.replace(
-                          `/conversions?statementId=${result.detail.id}&step=result&templateId=${result.preview.template.id}`,
+                          `/conversions?statementId=${result.detail.id}&step=result&templateId=${result.preview.template.id}${result.detail.statement.conversionType === 'EXTRACT' || searchParams.get('type') === 'extract' ? '&type=extract' : ''}`,
                           { scroll: false },
                         );
                       }}
@@ -152,9 +155,17 @@ function ConversionStudio() {
                     <StatementWorkspace
                       key={`${currentDetail.id}-${currentDetail.version}`}
                       detail={currentDetail}
+                      extractMode={
+                        currentDetail.statement.conversionType === 'EXTRACT' ||
+                        searchParams.get('type') === 'extract'
+                      }
+                      initialExtractId={searchParams.get('extractId') ?? undefined}
                       guided={flowStep === 'result'}
                       onImport={() => {
-                        if (confirmDiscard(hasUnsavedChanges())) setImporting(true);
+                        if (confirmDiscard(hasUnsavedChanges())) {
+                          setImportType(currentDetail.statement.conversionType ?? 'STATEMENT');
+                          setImporting(true);
+                        }
                       }}
                       initialTab={savedTab?.id === currentDetail.id ? savedTab.tab : undefined}
                       initialPreview={
@@ -165,7 +176,7 @@ function ConversionStudio() {
                       onChooseTemplate={() => {
                         if (confirmDiscard(hasUnsavedChanges()))
                           router.replace(
-                            `/conversions?statementId=${currentDetail.id}&step=model`,
+                            `/conversions?statementId=${currentDetail.id}&step=model${currentDetail.statement.conversionType === 'EXTRACT' || searchParams.get('type') === 'extract' ? '&type=extract' : ''}${searchParams.get('extractId') ? '&extractId=' + searchParams.get('extractId') : ''}`,
                             { scroll: false },
                           );
                       }}
@@ -184,6 +195,11 @@ function ConversionStudio() {
                           );
                       }}
                       onSaved={(tab) => {
+                        if (searchParams.has('extractId')) {
+                          const params = new URLSearchParams(searchParams.toString());
+                          params.delete('extractId');
+                          router.replace(`/conversions?${params}`, { scroll: false });
+                        }
                         if (tab) setSavedTab({ id: currentDetail.id, tab });
                         setPrepared(null);
                         detail.reload();
@@ -205,13 +221,30 @@ function ConversionStudio() {
                   <p className="conversion-eyebrow">VOTRE ESPACE DE CONVERSION</p>
                   <h2>Votre conversion commence ici.</h2>
                   <p>
-                    Ajoutez votre relevé bancaire. Vérifiez les mouvements et les soldes avant de
-                    les exporter. Retrouvez vos documents dans l’espace clients.
+                    Choisissez le PDF à traiter : un relevé complet ou un extrait bancaire. Vérifiez
+                    les mouvements et les soldes avant de les exporter. Retrouvez vos documents dans
+                    l’espace clients.
                   </p>
-                  <Button permission="documents.write" size="lg" onClick={() => setImporting(true)}>
-                    <Plus size={16} />
-                    Importer un nouveau relevé
-                  </Button>
+                  <div className="conversion-start-actions">
+                    <Button
+                      permission="documents.write"
+                      size="lg"
+                      onClick={() => startConversion('STATEMENT')}
+                    >
+                      <Plus size={17} />
+                      Importer un relevé
+                    </Button>
+                    <Button
+                      permission="documents.write"
+                      variant="outline"
+                      size="lg"
+                      onClick={() => startConversion('EXTRACT')}
+                    >
+                      <Plus size={17} />
+                      Importer un extrait
+                    </Button>
+                    <span>Relevés et extraits PDF · jusqu’à 20 Mo</span>
+                  </div>
                   <div className="conversion-empty-features">
                     <span>
                       <ShieldCheck size={15} />

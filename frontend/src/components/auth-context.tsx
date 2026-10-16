@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { KeyRound, ShieldCheck, FileOutput, ScanLine, Users, LogIn, RefreshCw } from 'lucide-react';
 import { ApiError, request } from '@/services/api';
+import { useRouter } from 'next/navigation';
 import { confirmDiscard, hasUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { Logo } from './logo';
 import { ThemeMenu } from './theme-menu';
@@ -46,6 +47,7 @@ export function Can({ permission, children }: { permission: string; children: Re
   return useAuth().can(permission) ? children : null;
 }
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState('');
   const sessionRequest = useRef(0);
@@ -134,6 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setup={session.setupRequired}
           onAuthenticated={(user) => {
             sessionRequest.current++;
+            router.replace('/dashboard');
             setSession({ setupRequired: false, user });
           }}
         />

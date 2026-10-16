@@ -47,7 +47,10 @@
   color: var(--muted-foreground);
 }
 .pdf-viewer-scroll {
+  position: relative;
   overflow: auto;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
   max-height: 65vh;
   background: var(--surface-alt);
   padding: 12px;
@@ -85,6 +88,19 @@
   font-size: 12px;
   color: var(--muted-foreground);
   padding: 12px;
+}
+.pdf-render-status {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  pointer-events: none;
 }
 .pdf-viewer-error {
   padding: 16px;
@@ -152,6 +168,7 @@
     top: 12px;
     max-height: calc(100dvh - 110px);
     overflow-y: auto;
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
   }
   .pdf-viewer-scroll {

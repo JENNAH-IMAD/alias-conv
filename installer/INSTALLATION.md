@@ -1,11 +1,11 @@
-# Alias Serveur 1.1.6 : installation automatique
+# Alias Serveur 1.2.0 : installation automatique
 
 Installer Alias uniquement sur le serveur. Les postes ouvrent l'adresse du serveur
 dans leur navigateur ou avec le raccourci `Acces-Alias.url`. Aucun client a installer.
 
 ## Windows 10/11 x64
 
-Lancer `Alias-Serveur-Setup-1.1.6.exe` avec les droits administrateur.
+Lancer `Alias-Serveur-Setup-1.2.0.exe` avec les droits administrateur.
 Le livrable inclut Node.js, le backend .NET autonome, PostgreSQL 18.6 et les services Windows.
 
 1. Choisir deux ports libres pour le frontend et le backend (3002 / 5081 par defaut).
@@ -46,6 +46,20 @@ et ne demande pas de droits administrateur. Conserver le dossier pour son fichie
 Les postes doivent rejoindre le reseau du serveur et se connecter avec leur compte Alias.
 
 ## Donnees et reinstallation
+
+L'icone **Gestion du serveur Alias** ouvre une application desktop reservee au serveur.
+Windows demande les droits administrateur. Elle affiche l'etat des services, permet de
+demarrer/arreter/redemarrer, d'ouvrir Alias, pgAdmin, la configuration OCR et les journaux.
+Les informations PostgreSQL se consultent dans une boite dediee ; le mot de passe reste
+masque tant que l'administrateur ne choisit pas de l'afficher ou de le copier.
+pgAdmin doit deja etre installe sur le serveur ; il n'est pas inclus dans le gestionnaire.
+
+Les ports frontend et backend sont modifiables avec l'adresse publique HTTP. Cette action
+interrompt les utilisateurs, sauvegarde la configuration dans `logs/ports-backup-*`,
+actualise les fichiers du proxy et le port de la regle de pare-feu, puis redemarre Alias.
+En cas d'echec, la configuration precedente est restauree et le redemarrage est tente.
+La base, son port, le jeton OCR et les PDF ne sont pas modifies. Les raccourcis des postes
+doivent utiliser la nouvelle adresse apres un changement de port frontend.
 
 Le dossier choisi (par defaut `C:\ProgramData\Alias Serveur`) contient :
 
@@ -118,3 +132,6 @@ Les livrables ouvrent HTTP dans le reseau local. Prevoir HTTPS avec un reverse p
 un certificat approuve par les postes pour l'exploitation, puis adapter le raccourci.
 DNS, certificat et HTTPS ne sont pas automatises. L'installateur Windows n'est pas signe.
 Prevoir les sauvegardes et la mise a niveau de .NET 8 pour un deploiement durable.
+# Lecture PDF, PaddleOCR et PDF structuré
+
+Le traitement utilise la lecture PDF et PaddleOCR. Les conversions peuvent produire un PDF structuré à cinq colonnes et un rapport de contrôle depuis l'aperçu, sans modèle de langage supplémentaire à installer.

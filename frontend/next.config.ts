@@ -18,7 +18,12 @@ const nextConfig: NextConfig = {
     return [{ source: '/api/:path*', destination: `${backend}/api/:path*` }];
   },
   // La version Windows se compile séparément du serveur de développement.
-  distDir: process.env.ALIAS_RUNTIME_BUILD === '1' ? '.next-runtime' : process.env.ALIAS_DESKTOP_BUILD === '1' ? '.next-desktop' : '.next',
+  distDir:
+    process.env.ALIAS_RUNTIME_BUILD === '1'
+      ? '.next-runtime'
+      : process.env.ALIAS_DESKTOP_BUILD === '1'
+        ? '.next-desktop'
+        : '.next',
 };
 
 export default nextConfig;

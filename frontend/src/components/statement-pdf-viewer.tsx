@@ -13,11 +13,18 @@ export function StatementPdfViewer({
   id,
   hasExtraction,
   onSelection,
+  sourcePath,
+  readOnly = false,
+  selectable = true,
 }: {
   id: string;
   hasExtraction: boolean;
   onSelection: (selection: PdfSelection | null) => void;
+  sourcePath?: string;
+  readOnly?: boolean;
+  selectable?: boolean;
 }) {
+  const documentPath = sourcePath ?? `/statement-imports/${id}/original`;
   const raw = useApi<PdfTextDocument>(hasExtraction ? `/statement-imports/${id}/extraction` : null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -32,11 +39,21 @@ export function StatementPdfViewer({
   const canvas = useRef<HTMLCanvasElement>(null);
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const observer = new ResizeObserver(([entry]) =>
-      setWidth(Math.max(200, entry.contentRect.width - 24)),
-    );
+    let frame = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      // contentRect already excludes padding. Hidden tabs must keep their last useful width.
+      if (entry.contentRect.width < 1) return;
+      const nextWidth = Math.max(1, Math.floor(entry.contentRect.width));
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() =>
+        setWidth((current) => (current === nextWidth ? current : nextWidth)),
+      );
+    });
     if (container.current) observer.observe(container.current);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, []);
   useEffect(() => {
     let disposed = false;
@@ -47,7 +64,7 @@ export function StatementPdfViewer({
         if (disposed) return;
         library.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
         task = library.getDocument({
-          url: `${API_URL}/statement-imports/${id}/original`,
+          url: `${API_URL}${documentPath}`,
           withCredentials: true,
           cMapUrl: '/pdfjs/cmaps/',
           cMapPacked: true,
@@ -61,9 +78,7 @@ export function StatementPdfViewer({
         }
       } catch {
         if (!disposed) {
-          setError(
-            'Impossible d’afficher le PDF original. Réessayez ou ouvrez-le dans un nouvel onglet.',
-          );
+          setError('Impossible d’afficher le PDF. Réessayez ou ouvrez-le dans un nouvel onglet.');
           setLoading(false);
         }
       }
@@ -73,7 +88,7 @@ export function StatementPdfViewer({
       disposed = true;
       void task?.destroy();
     };
-  }, [id, retry]);
+  }, [documentPath, retry]);
   useEffect(() => {
     if (!pdf || raw.loading) return;
     let disposed = false;
@@ -86,15 +101,25 @@ export function StatementPdfViewer({
         const base = page.getViewport({ scale: 1 });
         const viewport = page.getViewport({ scale: (width / base.width) * zoom });
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
-        const element = canvas.current;
-        element.width = Math.ceil(viewport.width * ratio);
-        element.height = Math.ceil(viewport.height * ratio);
-        setSize({ width: viewport.width, height: viewport.height });
-        render = page.render({ canvas: element, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
+        // Render separately so a zoom, resize or page change does not clear the visible PDF.
+        const buffer = document.createElement('canvas');
+        buffer.width = Math.ceil(viewport.width * ratio);
+        buffer.height = Math.ceil(viewport.height * ratio);
+        render = page.render({ canvas: buffer, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
         await render.promise;
+        if (disposed || !canvas.current) return;
+        const element = canvas.current;
+        const context = element.getContext('2d');
+        if (!context) throw new Error('PDF canvas unavailable');
+        element.width = buffer.width;
+        element.height = buffer.height;
+        context.drawImage(buffer, 0, 0);
+        setSize({ width: viewport.width, height: viewport.height });
         const extracted = raw.data?.pages.find((p) => p.number === pageNumber);
         let regions: Box[];
-        if (extracted?.boxes.length) {
+        if (readOnly || !selectable) {
+          regions = [];
+        } else if (extracted?.boxes.length) {
           regions = extracted.boxes.map((box) => ({
             text: box.text,
             left: (box.left / extracted.width) * 100,
@@ -139,7 +164,7 @@ export function StatementPdfViewer({
       disposed = true;
       render?.cancel();
     };
-  }, [pdf, pageNumber, width, zoom, raw.data, raw.loading]);
+  }, [pdf, pageNumber, width, zoom, raw.data, raw.loading, readOnly, selectable]);
   function choose(index: number) {
     const indices = selected.includes(index)
       ? selected.filter((i) => i !== index)
@@ -166,11 +191,21 @@ export function StatementPdfViewer({
     onSelection(null);
   }
   return (
-    <section className="statement-pdf-viewer" aria-label="Relevé bancaire original">
+    <section
+      className="statement-pdf-viewer"
+      aria-busy={loading}
+      aria-label={readOnly ? 'Relevé bancaire converti' : 'Relevé bancaire original'}
+    >
       <div className="pdf-viewer-heading">
         <div>
-          <h2>Votre relevé original</h2>
-          <p>Cliquez sur un texte pour le sélectionner. Plusieurs clics combinent les valeurs.</p>
+          <h2>{readOnly ? 'Votre relevé converti' : 'Votre relevé original'}</h2>
+          <p>
+            {readOnly
+              ? 'PDF structuré à cinq colonnes, généré à partir des corrections enregistrées.'
+              : selectable
+                ? 'Cliquez sur un texte pour le sélectionner. Plusieurs clics combinent les valeurs.'
+                : 'Consultez le document source. Corrigez les données directement dans le tableau.'}
+          </p>
         </div>
       </div>
       <div className="pdf-viewer-toolbar">
@@ -243,11 +278,7 @@ export function StatementPdfViewer({
           >
             Réessayer
           </Button>
-          <a
-            href={`${API_URL}/statement-imports/${id}/original`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href={`${API_URL}${documentPath}`} target="_blank" rel="noopener noreferrer">
             Ouvrir le PDF
           </a>
         </div>
@@ -259,7 +290,7 @@ export function StatementPdfViewer({
         aria-label="Document PDF avec sélection des textes"
       >
         {loading && !error && (
-          <p role="status" className="pdf-viewer-loading">
+          <p role="status" className="pdf-viewer-loading pdf-render-status">
             Affichage du relevé…
           </p>
         )}
@@ -271,6 +302,8 @@ export function StatementPdfViewer({
           />
           {!loading &&
             !error &&
+            !readOnly &&
+            selectable &&
             boxes.map((box, index) => (
               <button
                 type="button"
@@ -289,25 +322,27 @@ export function StatementPdfViewer({
               />
             ))}
         </div>
-        {!loading && !error && !boxes.length && (
+        {!readOnly && selectable && !loading && !error && !boxes.length && (
           <p className="pdf-viewer-loading">
             Aucun texte sélectionnable sur cette page. Vous pouvez saisir la valeur à corriger
             manuellement.
           </p>
         )}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={!selected.length}
-        onClick={() => {
-          setSelected([]);
-          onSelection(null);
-        }}
-      >
-        Effacer la sélection
-      </Button>
+      {!readOnly && selectable && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={!selected.length}
+          onClick={() => {
+            setSelected([]);
+            onSelection(null);
+          }}
+        >
+          Effacer la sélection
+        </Button>
+      )}
     </section>
   );
 }

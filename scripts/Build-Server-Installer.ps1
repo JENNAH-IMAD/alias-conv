@@ -68,6 +68,9 @@ Copy-Item -LiteralPath (Join-Path $taskRoot 'installer\assets\Alias.ico') -Desti
 $taskClients=Join-Path $taskStage 'Acces-postes'
 New-Item -ItemType Directory -Path $taskClients -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $taskRoot 'installer\assets\Alias.ico'),(Join-Path $taskRoot 'installer\Creer-acces-client.ps1'),(Join-Path $taskRoot 'installer\Creer-acces.cmd') -Destination $taskClients -Force
+& dotnet publish (Join-Path $taskRoot 'tools\ServerManager') -c Release -r win-x64 --self-contained true -o (Join-Path $taskStage 'management')
+if($LASTEXITCODE -ne 0){throw 'Publication du gestionnaire desktop echouee.'}
+Copy-Item -LiteralPath (Join-Path $taskRoot 'installer\Server-Control.ps1') -Destination (Join-Path $taskStage 'management') -Force
 & $taskCompiler /Q "/DStageDir=$taskStage" (Join-Path $taskRoot 'installer\Alias-Server.iss')
 if($LASTEXITCODE -ne 0){throw 'Compilation Inno Setup echouee.'}
-Write-Output "Installateur : $taskRoot\output\installers\Alias-Serveur-Setup-1.1.6.exe"
+Write-Output "Installateur : $taskRoot\output\installers\Alias-Serveur-Setup-1.2.0.exe"

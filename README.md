@@ -32,7 +32,7 @@ Les données de démonstration sont désactivées par défaut.
 
 Sous Windows, **Lancer-local.cmd** démarre l’API et l’interface. Les modes serveur
 et fenêtre desktop, ainsi que la préparation du livrable autonome, sont détaillés
-dans [le guide de lancement](docs/lancement-alias.md).
+dans [le guide serveur](installer/INSTALLATION.md) et [le guide desktop](installer/GUIDE-DESKTOP.md).
 
 Pour utiliser **PaddleOCR-VL-1.6 comme sur le site AI Studio**, configurer
 `Ocr:Provider=AI_STUDIO` et `Ocr:CloudToken` côté serveur. Les PDF sont alors
@@ -63,12 +63,12 @@ Ouvrir `http://localhost:3002`. Le navigateur accède à l’API par la même or
 permissions** permet ensuite de gérer les collaborateurs et leurs accès.
 Plusieurs collaborateurs peuvent convertir en même temps : deux lectures OCR actives
 par défaut, avec attente automatique pour les suivantes et suivi propre à chaque
-utilisateur. Voir [les connexions et conversions simultanées](docs/multi-user-conversions.md)
-pour l'accès depuis d'autres postes et le réglage de la capacité.
+utilisateur. Les réglages `Ocr:MaxConcurrentJobs`, `Ocr:MaxQueuedJobs` et
+`Ocr:QueueWaitSeconds` permettent d'ajuster cette capacité côté serveur.
 L’espace clients regroupe les relevés convertis, leurs fichiers Sage/CSV archivés
 et les PDF déposés. L’import de conversion peut sélectionner le client et son compte.
 Les imports existants peuvent être classés depuis **Conversion & export**.
-Voir [le guide des clients, archives et permissions](docs/espace-clients-et-permissions.md).
+Les autorisations sont définies dans `backend/BankStatementConverter.Application/Permissions.cs`.
 Les fichiers supprimés sont nettoyés après validation de la transaction en base.
 L’écran « Modèles d’exportation » permet de conserver et de modifier les formats CSV et Sage,
 avec leurs colonnes, séparateurs, encodages et formats de nombres.
@@ -83,9 +83,11 @@ renvoie des tableaux structurés, du Markdown et le JSON complet. L’onglet
 **Texte lu & adaptation** permet de les consulter, télécharger et adapter par numéro
 de colonne. Le mode local utilise le texte natif en priorité, puis l’OCR PP-OCRv6.
 Le parcours sépare la lecture, l’adaptation des champs bancaires et l’exportation.
-Les exemples synthétiques PDF se trouvent dans le dossier `relvée`.
+Les tests PDF historiques attendent un dossier de fixtures dont le nom commence par
+`relv` à la racine. Ce dossier est absent de cette copie ; les tests concernés échouent
+tant que leurs PDF ne sont pas restaurés.
 Le contrat JSON reste disponible dans l’API pour les intégrations techniques.
-Voir [le guide de conversion et d’export](docs/conversion-export.md).
+Les contrats d'import et d'export sont dans `backend/BankStatementConverter.Application/Exports`.
 
 ## Vérification
 
@@ -104,11 +106,22 @@ la supprime à la fin. Il utilise les identifiants de `TEST_DATABASE_URL` si cet
 variable est définie, sinon ceux du fichier local de développement. Le rôle PostgreSQL
 doit pouvoir créer des bases ; aucune écriture de test ne cible la base de travail.
 Pour ne lancer que les tests unitaires, ajouter `--filter 'Category!=Integration'`.
-Voir [la construction Windows](desktop/README.md) pour le lanceur.
-# Installation serveur Windows et Linux
+Voir [le guide desktop](installer/GUIDE-DESKTOP.md) pour le lanceur Windows.
 
-Voir [le guide serveur](docs/installation-serveur.md) pour installer Alias une seule
+## Installation serveur Windows et Linux
+
+Voir [le guide serveur](installer/INSTALLATION.md) pour installer Alias une seule
 fois et ouvrir l'application depuis les postes avec un navigateur.
 Les scripts de fabrication sont `scripts/Build-Server-Installer.ps1` (Windows 10/11 x64)
 et `scripts/Build-Linux-Package.ps1` (Docker Engine/Compose sous Linux).
+
+## Architecture et maintenance
+
+Voir [l'analyse et les conventions du projet](docs/qualite-projet.md) pour
+l'organisation du code, le nettoyage réalisé et les problèmes restant à traiter.
+
+La commande `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1`
+vérifie la compilation, le formatage, les types, le lint et les tests unitaires.
+Ajouter `-IncludeE2E` pour les tests navigateur ou `-IncludeIntegration` pour les
+tests nécessitant PostgreSQL. Les contrôles s'arrêtent au premier échec.
 

@@ -22,9 +22,11 @@ public static class Permissions
     public static string[] Accountant => All.Where(p => !new[] { "banks.write", "templates.write", "clients.write", "accounts.write" }.Contains(p)).ToArray();
     public static string[] Validate(string[]? values)
     {
-        if (values == null || values.Length > Catalog.Length) throw new AppException(400, "Liste de permissions invalide.");
+        if (values == null || values.Length > Catalog.Length)
+            throw new AppException(400, "Liste de permissions invalide.");
         var selected = values.Distinct(StringComparer.Ordinal).OrderBy(p => p).ToArray();
-        if (selected.Any(p => !All.Contains(p))) throw new AppException(400, "Permission inconnue.");
+        if (selected.Any(p => !All.Contains(p)))
+            throw new AppException(400, "Permission inconnue.");
         if (Catalog.Where(p => selected.Contains(p.Key)).Any(p => p.Requires.Any(r => !selected.Contains(r))))
             throw new AppException(400, "Activez les droits de consultation requis avant d’accorder cette permission.");
         return selected;

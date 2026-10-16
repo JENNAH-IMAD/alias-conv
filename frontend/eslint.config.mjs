@@ -10,6 +10,8 @@ const eslintConfig = defineConfig([
     // Exclusions par défaut de eslint-config-next :
     '.next/**',
     '.next-desktop/**',
+    '.next-runtime/**',
+    'public/pdfjs/**',
     'out/**',
     'build/**',
     'next-env.d.ts',

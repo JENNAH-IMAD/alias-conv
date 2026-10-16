@@ -45,8 +45,15 @@ type ArchiveStatement = {
   exportCount: number;
   lastExportAt: string | null;
 };
-export function ClientConversions({ clientId }: { clientId: string }) {
+export function ClientConversions({
+  clientId,
+  conversionType = 'STATEMENT',
+}: {
+  clientId: string;
+  conversionType?: 'STATEMENT' | 'EXTRACT';
+}) {
   const router = useRouter();
+  const documentLabel = conversionType === 'EXTRACT' ? 'extrait' : 'relevé';
   const { can } = useAuth();
   const [selection, setSelection] = useState<ArchiveStatement[]>([]);
   const [validating, setValidating] = useState<ArchiveStatement | null>(null);
@@ -88,6 +95,7 @@ export function ClientConversions({ clientId }: { clientId: string }) {
   const [selectedScope, setSelectedScope] = useState(selectionScope);
   const selected = selectedScope === selectionScope ? selection : [];
   const query = new URLSearchParams({ page: String(page), pageSize: '20' });
+  query.set('conversionType', conversionType);
   if (!clientId && scope === 'unassigned') query.set('unassigned', 'true');
   if (status) query.set('status', status);
   if (term) query.set('search', term);
@@ -120,27 +128,37 @@ export function ClientConversions({ clientId }: { clientId: string }) {
     }
   }
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="statement-archive space-y-5">
+      <div className="statement-archive-heading">
         <div>
           <h2 className="font-semibold">
-            Relevés & exports <span className="ui-tag ml-2">{statements.data?.total ?? '—'}</span>
+            {conversionType === 'EXTRACT'
+              ? 'Extraits bancaires convertis'
+              : 'Relevés bancaires & exports'}{' '}
+            <span className="ui-tag ml-2">{statements.data?.total ?? '—'}</span>
           </h2>
           <p className="muted text-sm mt-2">
-            Les 5 derniers relevés ajoutés par compte bancaire. Au 6e ajout, le plus ancien est
-            supprimé définitivement ; sa trace reste dans l’historique.
+            {conversionType === 'EXTRACT'
+              ? 'Vos extraits convertis et leurs fichiers d’export.'
+              : 'Vos relevés convertis et leurs fichiers d’export.'}
           </p>
         </div>
         <Button
           permission="documents.write"
           onClick={() =>
-            router.push(`/conversions?import=1${clientId ? `&clientId=${clientId}` : ''}`)
+            router.push(
+              `/conversions?import=1${conversionType === 'EXTRACT' ? '&type=extract' : ''}${clientId ? `&clientId=${clientId}` : ''}`,
+            )
           }
         >
           <Plus size={16} />
-          Importer et convertir
+          {conversionType === 'EXTRACT' ? 'Convertir un extrait bancaire' : 'Importer et convertir'}
         </Button>
       </div>
+      <p className="statement-retention-note">
+        Conservation : les 5 derniers documents par compte. Au 6e ajout, le plus ancien est supprimé
+        définitivement ; son historique est conservé.
+      </p>
       <form
         className="ui-card statement-archive-filters"
         onSubmit={(event) => {
@@ -150,17 +168,22 @@ export function ClientConversions({ clientId }: { clientId: string }) {
         }}
       >
         <label className="statement-archive-search">
-          Rechercher un relevé
+          Rechercher un {documentLabel}
           <div className="flex gap-2 mt-2">
             <input
-              aria-label="Rechercher un relevé"
+              aria-label={`Rechercher un ${documentLabel}`}
               className="ui-input"
               placeholder="Banque, numéro, PDF ou client…"
               maxLength={150}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <Button type="submit" size="icon" variant="outline" aria-label="Rechercher les relevés">
+            <Button
+              type="submit"
+              size="icon"
+              variant="outline"
+              aria-label={`Rechercher les ${documentLabel}s`}
+            >
               <Search size={17} />
             </Button>
           </div>
@@ -177,15 +200,15 @@ export function ClientConversions({ clientId }: { clientId: string }) {
                 setPage(1);
               }}
             >
-              <option value="all">Tous les relevés</option>
+              <option value="all">Tous les {documentLabel}s</option>
               <option value="unassigned">À classer dans un client</option>
             </select>
           </label>
         )}
         <label>
-          Statut du relevé
+          Statut du {documentLabel}
           <select
-            aria-label="Statut du relevé"
+            aria-label={`Statut du ${documentLabel}`}
             className="ui-input mt-2"
             value={status}
             onChange={(event) => {
@@ -211,8 +234,8 @@ export function ClientConversions({ clientId }: { clientId: string }) {
       </form>
       {!clientId && (
         <p className="muted text-sm">
-          Les relevés sans client apparaissent aussi ici. Ouvrez un relevé puis utilisez « Classer »
-          pour le rattacher au bon client et à son compte.
+          Les {documentLabel}s sans client apparaissent aussi ici. Ouvrez un {documentLabel} puis
+          utilisez « Classer » pour le rattacher au bon client et à son compte.
         </p>
       )}
       <>
@@ -240,7 +263,9 @@ export function ClientConversions({ clientId }: { clientId: string }) {
               />
               Tout sélectionner sur cette page
             </label>
-            <span className="muted text-sm">{selected.length} relevé(s) sélectionné(s)</span>
+            <span className="muted text-sm">
+              {selected.length} {documentLabel}(s) sélectionné(s)
+            </span>
             <Button
               variant="danger"
               size="sm"
@@ -267,7 +292,12 @@ export function ClientConversions({ clientId }: { clientId: string }) {
                 <header className="account-group-heading">
                   <div>
                     <p className="conversion-eyebrow">{first.clientName || 'À CLASSER'}</p>
-                    <h3>{first.accountName || 'Relevés sans compte'}</h3>
+                    <h3>
+                      {first.accountName ||
+                        (conversionType === 'EXTRACT'
+                          ? 'Extraits sans compte'
+                          : 'Relevés sans compte')}
+                    </h3>
                     <p className="muted text-sm">
                       {first.bankName} ·{' '}
                       {first.accountNumber
@@ -276,14 +306,15 @@ export function ClientConversions({ clientId }: { clientId: string }) {
                     </p>
                   </div>
                   <span className="ui-tag">
-                    {items.length} relevé(s){accountId !== 'unassigned' ? ' · 5 maximum' : ''}
+                    {items.length} {documentLabel}(s)
+                    {accountId !== 'unassigned' ? ' · 5 maximum' : ''}
                   </span>
                 </header>
                 <div className="client-archive-grid">
                   {items.map((item) => (
                     <article key={item.id} className="ui-card client-archive-card">
-                      <div className="flex justify-between items-start gap-3">
-                        <div className="flex items-center gap-3">
+                      <div className="statement-card-heading">
+                        <div className="statement-card-identity">
                           {can('documents.write') && (
                             <input
                               type="checkbox"
@@ -300,7 +331,18 @@ export function ClientConversions({ clientId }: { clientId: string }) {
                               }
                             />
                           )}
-                          <FileText className="accent-text" size={23} />
+                          <span className="statement-card-icon">
+                            <FileText size={22} />
+                          </span>
+                          <div>
+                            <h3>{item.sourceFileName || item.bankName}</h3>
+                            <p className="statement-archive-owner">
+                              {item.clientName ||
+                                (item.clientId
+                                  ? 'Client associé'
+                                  : 'À classer · aucun client associé')}
+                            </p>
+                          </div>
                         </div>
                         <span
                           className={item.status === 'VALIDATED' ? 'status-positive' : 'ui-tag'}
@@ -312,43 +354,70 @@ export function ClientConversions({ clientId }: { clientId: string }) {
                               : 'À vérifier'}
                         </span>
                       </div>
-                      <div>
-                        <h3>{item.sourceFileName || item.bankName}</h3>
-                        <p className="statement-archive-owner">
-                          {item.clientName ||
-                            (item.clientId ? 'Client associé' : 'À classer · aucun client associé')}
-                        </p>
-                        <p>
-                          {item.bankName}
-                          {item.accountName ? ` · ${item.accountName}` : ''}
-                          {item.accountNumber ? ` · ${accountSuffix(item.accountNumber)}` : ''}
-                        </p>
-                        {item.statementNumber && (
-                          <p>
-                            {item.statementNumber}
-                            {item.currency ? ` · ${item.currency}` : ''}
-                          </p>
+                      <dl className="statement-card-details">
+                        <div>
+                          <dt>Banque</dt>
+                          <dd>
+                            {item.bankName}
+                            {item.currency && (
+                              <span className="statement-currency">{item.currency}</span>
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Référence du relevé</dt>
+                          <dd>{item.statementNumber || 'Non renseignée'}</dd>
+                        </div>
+                        {(item.accountName || item.accountNumber) && (
+                          <div className="statement-detail-wide">
+                            <dt>Compte bancaire</dt>
+                            <dd>
+                              {[
+                                item.accountName,
+                                item.accountNumber ? accountSuffix(item.accountNumber) : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </dd>
+                          </div>
                         )}
-                        <p>
-                          {date(item.periodStart)} — {date(item.periodEnd)}
-                        </p>
-                      </div>
+                        <div className="statement-detail-wide">
+                          <dt>Période du relevé</dt>
+                          <dd>
+                            {date(item.periodStart)} — {date(item.periodEnd)}
+                          </dd>
+                        </div>
+                      </dl>
                       <div className="client-archive-meta">
-                        <span>{item.transactionCount} mouvements</span>
-                        <span>Version {item.version}</span>
-                        <span>{item.exportCount} export(s)</span>
+                        <span>
+                          <strong>{item.transactionCount.toLocaleString('fr-FR')}</strong>{' '}
+                          mouvements
+                        </span>
+                        <span>
+                          Version <strong>{item.version}</strong>
+                        </span>
+                        <span>
+                          <strong>{item.exportCount}</strong> export(s)
+                        </span>
                       </div>
-                      <p>
-                        Importé {new Date(item.createdAt).toLocaleString('fr-FR')}
-                        {item.importedByName ? ` par ${item.importedByName}` : ''}
-                        {item.modifiedByName ? ` · modifié par ${item.modifiedByName}` : ''}
-                      </p>
-                      {item.modifiedByName && (
-                        <p className="muted text-xs">
-                          Dernière modification : {new Date(item.updatedAt).toLocaleString('fr-FR')}{' '}
-                          · {item.modifiedByName}
-                        </p>
-                      )}
+                      <dl className="statement-card-audit">
+                        <div>
+                          <dt>Importé le</dt>
+                          <dd>
+                            {new Date(item.createdAt).toLocaleString('fr-FR')}
+                            {item.importedByName && <span>par {item.importedByName}</span>}
+                          </dd>
+                        </div>
+                        {item.modifiedByName && (
+                          <div>
+                            <dt>Dernière modification</dt>
+                            <dd>
+                              {new Date(item.updatedAt).toLocaleString('fr-FR')}
+                              <span>par {item.modifiedByName}</span>
+                            </dd>
+                          </div>
+                        )}
+                      </dl>
                       <div className="client-archive-actions">
                         {item.status !== 'VALIDATED' && (
                           <Button
@@ -379,9 +448,16 @@ export function ClientConversions({ clientId }: { clientId: string }) {
 
                         <Button
                           size="sm"
-                          onClick={() => router.push(`/conversions?statementId=${item.id}`)}
+                          className="statement-card-open"
+                          onClick={() =>
+                            router.push(
+                              `/conversions?statementId=${item.id}${conversionType === 'EXTRACT' ? '&type=extract' : ''}`,
+                            )
+                          }
                         >
-                          Ouvrir le relevé
+                          {conversionType === 'EXTRACT'
+                            ? 'Ouvrir la conversion'
+                            : 'Ouvrir le relevé'}
                           <ArrowUpRight size={14} />
                         </Button>
 
@@ -419,18 +495,6 @@ export function ClientConversions({ clientId }: { clientId: string }) {
                               Original
                             </Button>
                           </>
-                        )}
-                        {item.status === 'VALIDATED' && (
-                          <Button
-                            permission="documents.export"
-                            size="sm"
-                            variant="outline"
-                            disabled={!!busy}
-                            onClick={() => void file(item, 'standard')}
-                          >
-                            <Download size={14} />
-                            CSV standard
-                          </Button>
                         )}
                       </div>
                     </article>

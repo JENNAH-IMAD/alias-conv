@@ -28,17 +28,22 @@ test('dashboard prompt and real downloads work over HTTP, including mobile', { t
     await page.route('**/api/auth/session', (route) => route.fulfill({ json: { setupRequired: false, user: { id: 'test', name: 'Test', role: 'Admin', permissions: [], isActive: true, email: 'test@example.test', createdAt: '2026-01-01', lastLoginAt: null, version: 1 } } }));
     await page.route('**/api/dashboard', (route) => route.fulfill({ json: { clients: 0, banks: 0, accounts: 0, statements: 0, exports: 0, unassigned: 0, pendingReview: 0, statuses: [], activity: [], recent: [], updatedAt: '2026-01-01' } }));
     await page.goto(`http://alias-dashboard.test:${port}/dashboard`);
-    const card = page.getByRole('region', { name: 'Préparer un relevé avec ChatGPT' });
+    const card = page.getByRole('region', { name: 'Prompt relevé', exact: true });
     try { await card.waitFor({ timeout: 10000 }); } catch (error) { process.stderr.write((await page.locator('body').innerText()).slice(0, 1400)); throw error; }
     assert.equal(await page.evaluate(() => isSecureContext), false);
-    await page.getByRole('button', { name: 'Copier le prompt' }).click();
-    await page.getByRole('textbox', { name: 'Prompt de conversion pour ChatGPT' }).waitFor();
-    const prompt = await page.getByRole('textbox', { name: 'Prompt de conversion pour ChatGPT' }).inputValue();
+    await card.getByRole('button', { name: 'Copier le prompt' }).click();
+    await card.getByRole('textbox', { name: 'Prompt de conversion pour ChatGPT' }).waitFor();
+    const prompt = await card.getByRole('textbox', { name: 'Prompt de conversion pour ChatGPT' }).inputValue();
     assert.ok(prompt.includes('Date opération | Date valeur | Libellé | Débit | Crédit'));
-    assert.ok(prompt.includes('Ne présente pas un résultat incertain comme entièrement validé.'));
-    for (const [label, filename] of [['Modèle PDF · 5 colonnes', 'modele-releve-alias.pdf'], ['Modèle EMA · Relever.ema', 'Relever.ema']]) {
+    assert.ok(prompt.includes('Ne présente jamais une donnée incertaine comme entièrement validée.'));
+    const chatGptLink = card.getByRole('link', { name: 'Ouvrir ChatGPT avec le prompt' });
+    const chatGptUrl = new URL(await chatGptLink.getAttribute('href'));
+    assert.equal(chatGptUrl.origin, 'https://chatgpt.com');
+    assert.equal(chatGptUrl.searchParams.get('q'), prompt);
+    assert.equal(await chatGptLink.getAttribute('target'), '_blank');
+    for (const [label, filename] of [['PDF · 5 colonnes', 'modele-releve-alias.pdf'], ['Modèle EMA', 'Relever.ema']]) {
       const pending = page.waitForEvent('download');
-      await page.getByRole('link', { name: label }).click();
+      await page.locator('.overview-header').getByRole('link', { name: label }).click();
       const download = await pending;
       assert.equal(download.suggestedFilename(), filename);
       const received = await readFile(await download.path());

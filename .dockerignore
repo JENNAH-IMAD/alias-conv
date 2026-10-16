@@ -16,3 +16,8 @@ output
 **/appsettings.Development.json
 uploads
 data/snapshot
+Desktop-Install
+.codex-test-artifacts
+**/__pycache__
+**/coverage
+**/*.dump

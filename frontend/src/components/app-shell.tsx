@@ -16,6 +16,7 @@ import {
   X,
   ChevronRight,
   Plus,
+  RefreshCw,
   Users,
   LockKeyhole,
   Settings2,
@@ -24,6 +25,7 @@ import { useAuth, Can } from './auth-context';
 import { ThemeMenu } from './theme-menu';
 import { Logo } from './logo';
 import Image from 'next/image';
+import { confirmDiscard, hasUnsavedChanges } from '@/lib/use-unsaved-changes';
 const groups = [
   {
     name: 'ESPACE DE TRAVAIL',
@@ -199,7 +201,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </>
   );
   return (
-    <div className={`app-shell ${compact ? 'sidebar-compact' : ''}`}>
+    <div
+      className={`app-shell ${compact ? 'sidebar-compact' : ''} ${pathname === '/conversions' ? 'app-shell-browser-scroll' : ''}`}
+    >
       <a href="#main-content" className="skip-link">
         Aller au contenu
       </a>
@@ -236,10 +240,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="truncate font-medium">{active?.label || 'Alias'}</span>
           </nav>
           <div className="topbar-actions flex shrink-0 items-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Actualiser la page"
+              title="Actualiser la page"
+              onClick={() => {
+                if (confirmDiscard(hasUnsavedChanges())) window.location.reload();
+              }}
+            >
+              <RefreshCw size={17} />
+            </Button>
             <Can permission="documents.write">
-              <Button asChild className="primary-action hidden sm:inline-flex">
-                <Link href="/conversions?import=1">
-                  <Plus size={17} /> Importer un PDF
+              <Button asChild className="primary-action navbar-import-button">
+                <Link
+                  href="/conversions?import=1"
+                  aria-label="Importer un PDF"
+                  onClick={(event) => {
+                    if (!confirmDiscard(hasUnsavedChanges())) event.preventDefault();
+                  }}
+                >
+                  <Plus size={17} />
+                  <span className="navbar-import-label">Importer un PDF</span>
+                  <span className="navbar-import-short" aria-hidden="true">
+                    PDF
+                  </span>
                 </Link>
               </Button>
             </Can>

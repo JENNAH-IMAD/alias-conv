@@ -17,15 +17,29 @@ public sealed class WorkspaceCookieEvents(AppDbContext db) : CookieAuthenticatio
     public override async Task ValidatePrincipal(CookieValidatePrincipalContext context)
     {
         var ct = context.HttpContext.RequestAborted;
-        if (!Guid.TryParse(context.Principal?.FindFirstValue("session"), out var id)) { context.RejectPrincipal(); return; }
+        if (!Guid.TryParse(context.Principal?.FindFirstValue("session"), out var id))
+        {
+            context.RejectPrincipal();
+            return;
+        }
         var session = await db.WorkspaceSessions.AsNoTracking().Include(s => s.User).SingleOrDefaultAsync(s => s.Id == id, ct);
         if (session == null || session.ExpiresAt <= DateTime.UtcNow || !session.User.IsActive || session.UserSessionVersion != session.User.SessionVersion)
-        { context.RejectPrincipal(); return; }
+        {
+            context.RejectPrincipal();
+            return;
+        }
         // Permissions and name are always read from the database, never trusted from a stale cookie.
         context.ReplacePrincipal(Principal(session.User, session.Id));
     }
     public override Task RedirectToLogin(RedirectContext<CookieAuthenticationOptions> context) => Reject(context, 401, "Connectez-vous pour accéder à cet espace.");
     public override Task RedirectToAccessDenied(RedirectContext<CookieAuthenticationOptions> context) => Reject(context, 403, "Vous n’avez pas la permission nécessaire.");
     private static Task Reject(RedirectContext<CookieAuthenticationOptions> context, int status, string title)
-    { context.Response.StatusCode = status; return context.Response.WriteAsJsonAsync(new { status, title }); }
+    {
+        context.Response.StatusCode = status;
+        return context.Response.WriteAsJsonAsync(new
+        {
+            status,
+            title
+        });
+    }
 }

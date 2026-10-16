@@ -14,7 +14,8 @@ public sealed class OcrWorkQueue : IDisposable
 
     public OcrWorkQueue(IConfiguration config)
     {
-        limiter = new(new ConcurrencyLimiterOptions {
+        limiter = new(new ConcurrencyLimiterOptions
+        {
             PermitLimit = Math.Clamp(config.GetValue("Ocr:MaxConcurrentJobs", 2), 1, 16),
             QueueLimit = Math.Clamp(config.GetValue("Ocr:MaxQueuedJobs", 32), 0, 256),
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst
@@ -31,7 +32,8 @@ public sealed class OcrWorkQueue : IDisposable
         try
         {
             var admission = limiter.AcquireAsync(1, waiting.Token);
-            if (!admission.IsCompletedSuccessfully) progress?.Report("queued", 25);
+            if (!admission.IsCompletedSuccessfully)
+                progress?.Report("queued", 25);
             lease = await admission;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -40,7 +42,8 @@ public sealed class OcrWorkQueue : IDisposable
         }
         using (lease)
         {
-            if (!lease.IsAcquired) throw new AppException(429, "La file locale des conversions est pleine. Réessayez après la fin d’un traitement.");
+            if (!lease.IsAcquired)
+                throw new AppException(429, "La file locale des conversions est pleine. Réessayez après la fin d’un traitement.");
             ct.ThrowIfCancellationRequested();
             progress?.Report("reading", 25);
             return await client.ExtractAsync(content, ct);

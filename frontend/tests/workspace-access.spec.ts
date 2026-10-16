@@ -6,6 +6,10 @@ const dashboardExample = {
   banks: 5,
   accounts: 18,
   statements: 42,
+  statementDocuments: 30,
+  extracts: 12,
+  statementExports: 40,
+  extractExports: 24,
   exports: 64,
   pendingReview: 8,
   unassigned: 3,
@@ -106,24 +110,32 @@ const client = {
   status: 'Actif',
   photoVersion: null,
 };
-async function routes(page: Page, options: { setup?: boolean; reader?: boolean } = {}) {
-  let user: typeof admin | null = options.setup
-    ? null
-    : options.reader
-      ? {
-          ...admin,
-          id: 'reader-1',
-          name: 'Collaborateur lecture',
-          role: 'User',
-          permissions: readPermissions,
-        }
-      : admin;
+async function routes(
+  page: Page,
+  options: { setup?: boolean; reader?: boolean; signedOut?: boolean } = {},
+) {
+  let user: typeof admin | null =
+    options.setup || options.signedOut
+      ? null
+      : options.reader
+        ? {
+            ...admin,
+            id: 'reader-1',
+            name: 'Collaborateur lecture',
+            role: 'User',
+            permissions: readPermissions,
+          }
+        : admin;
   const users = [admin];
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/api/, '');
     const method = route.request().method();
     const respond = (body: unknown) => route.fulfill({ json: body });
     if (path === '/auth/session') return respond({ setupRequired: !!options.setup && !user, user });
+    if (path === '/auth/login') {
+      user = admin;
+      return respond(admin);
+    }
     if (path === '/auth/setup') {
       expect(route.request().headers()['x-alias-request']).toBe('1');
       expect(route.request().postDataJSON()).toMatchObject({
@@ -202,6 +214,14 @@ async function routes(page: Page, options: { setup?: boolean; reader?: boolean }
         ]),
       );
     if (path === '/dashboard') return respond(dashboardExample);
+    if (path === '/settings/ocr')
+      return respond({
+        provider: 'LOCAL',
+        cloudModel: 'PP-OCRv6',
+        baseUrl: 'http://127.0.0.1:8091',
+        hasToken: false,
+        apiUrl: 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs',
+      });
     if (path === '/extraction-profiles/history' || path === '/client-workspace/history')
       return respond(pagination([]));
     if (
@@ -328,6 +348,14 @@ test('Tous les relevés, même sans client, restent consultables dans l’espace
   await expect(
     page.getByRole('heading', { name: 'releve_a_classer_1.pdf', exact: true }),
   ).toBeVisible();
+  const unassignedCard = page.locator('.client-archive-card').filter({
+    has: page.getByRole('heading', { name: 'releve_a_classer_1.pdf', exact: true }),
+  });
+  await unassignedCard.screenshot({ path: '../output/screenshots/statement-card-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await unassignedCard.screenshot({ path: '../output/screenshots/statement-card-mobile.png' });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByLabel('Classement', { exact: true }).selectOption('unassigned');
   await expect(page.getByText('21 éléments · Page 1 sur 2', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'releve_mars.pdf', exact: true })).toHaveCount(0);
@@ -533,6 +561,8 @@ test('Premier administrateur puis création d’un collaborateur avec ses permis
   await page.getByLabel('Adresse e-mail').fill('amine@example.test');
   await page.getByLabel('Mot de passe', { exact: true }).fill('Fictional-password-2026');
   await page.getByRole('button', { name: 'Créer mon espace' }).click();
+  await expect(page).toHaveURL('/dashboard');
+  await page.goto('/users');
   await expect(page.getByRole('heading', { name: 'Votre équipe, les bons accès.' })).toBeVisible();
   await page.getByRole('button', { name: 'Ajouter un utilisateur' }).click();
   const dialog = page.getByRole('dialog', { name: 'Ajouter un collaborateur' });
@@ -651,8 +681,11 @@ test('Toutes les pages et le sidebar restent lisibles en clair, sombre et sur mo
     '/bank-accounts',
     '/templates',
     '/client-workspace?clientId=client-1',
+    '/client-workspace?section=extracts',
     '/conversions',
+    '/history',
     '/users',
+    '/settings',
   ];
   for (const mode of ['light', 'dark']) {
     await page.addInitScript((theme) => localStorage.setItem('bank-converter-theme', theme), mode);
@@ -666,7 +699,9 @@ test('Toutes les pages et le sidebar restent lisibles en clair, sombre et sur mo
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
-      const slug = path.split('?')[0].slice(1);
+      const slug = path.includes('section=extracts')
+        ? 'client-extracts'
+        : path.split('?')[0].slice(1);
       await page.screenshot({
         path: `../output/screenshots/redesign/${slug}-${mode}.png`,
         animations: 'disabled',
@@ -689,12 +724,15 @@ test('Toutes les pages et le sidebar restent lisibles en clair, sombre et sur mo
     (await openSessionMenu(page)).getByRole('menuitem', { name: 'Se déconnecter' }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Paramètres', exact: true })).toHaveCount(0);
-  const removedPage = await page.goto('/settings');
-  expect(removedPage?.status()).toBe(404);
+  const settingsPage = await page.goto('/settings');
+  expect(settingsPage?.status()).toBe(200);
+  await expect(
+    page.getByRole('heading', { name: 'Configuration PaddleOCR', exact: true }),
+  ).toBeVisible();
   await page.goto('/dashboard');
   await page.locator('.desktop-sidebar').getByRole('link', { name: 'Conversion & export' }).click();
   await expect(page).toHaveURL(/\/conversions$/);
-  await expect(page.locator('main h1')).toHaveText('Convertissez vos relevés en toute simplicité.');
+  await expect(page.locator('main h1')).toHaveText('Convertir vos relevés et extraits bancaires');
   await page.screenshot({
     path: '../output/screenshots/redesign/sidebar-compact.png',
     animations: 'disabled',
@@ -727,8 +765,11 @@ test('Les écrans étroits et tablettes gardent les actions visibles, y compris 
       '/bank-accounts',
       '/templates',
       '/client-workspace?clientId=client-1',
+      '/client-workspace?section=extracts',
       '/conversions',
+      '/history',
       '/users',
+      '/settings',
     ]) {
       await page.goto(path);
       await expect(page.locator('main h1')).toBeVisible();
@@ -759,6 +800,151 @@ test('Les écrans étroits et tablettes gardent les actions visibles, y compris 
     await dialog.getByRole('button', { name: 'Annuler', exact: true }).click();
     await expect(dialog).not.toBeVisible();
   }
+});
+
+test('Audit visuel : les formulaires des référentiels restent cadrés et leurs actions accessibles', async ({
+  page,
+}) => {
+  await routes(page);
+  const editors = [
+    ['/clients', 'Nouveau client', 'Créer · Client'],
+    ['/banks', 'Ajouter une banque', 'Ajouter une banque'],
+    ['/bank-accounts', 'Nouveau compte', 'Créer · Compte bancaire'],
+    ['/templates', 'Ajouter un modèle', 'Ajouter un modèle'],
+  ];
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(
+      (theme) => localStorage.setItem('bank-converter-theme', theme),
+      width === 1440 ? 'light' : 'dark',
+    );
+    for (const [path, action, title] of editors) {
+      await page.goto(path);
+      await page.getByRole('button', { name: action, exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: title, exact: true });
+      await expect(dialog).toBeVisible();
+      expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      const save = dialog.getByRole('button', { name: 'Enregistrer', exact: true });
+      await save.scrollIntoViewIfNeeded();
+      await expect(save).toBeInViewport();
+      await expect(dialog.getByRole('button', { name: 'Fermer', exact: true })).toBeInViewport();
+      await dialog.screenshot({
+        path: `../output/screenshots/redesign/editor-${path.slice(1)}-${width}.png`,
+      });
+      await dialog.getByRole('button', { name: 'Annuler', exact: true }).click();
+      await expect(dialog).not.toBeVisible();
+    }
+  }
+});
+
+test('Compte bancaire : la confirmation visuelle permet d’annuler avant toute suppression', async ({
+  page,
+}) => {
+  await routes(page);
+  let removals = 0;
+  await page.route('**/api/bank-accounts/account-1', (route) => {
+    expect(route.request().method()).toBe('DELETE');
+    removals++;
+    return route.fulfill({ status: 204 });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/bank-accounts');
+  await expect(page.getByRole('link', { name: 'Voir les relevés' })).toHaveAttribute(
+    'href',
+    '/client-workspace?clientId=client-1',
+  );
+  await page.getByRole('button', { name: 'Supprimer Compte principal', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Supprimer le compte bancaire', exact: true });
+  await expect(dialog).toContainText('Compte principal');
+  expect(removals).toBe(0);
+  await dialog.getByRole('button', { name: 'Annuler', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(removals).toBe(0);
+  await page.getByRole('button', { name: 'Supprimer Compte principal', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Supprimer le compte', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(removals).toBe(1);
+});
+
+test('User editor shows and hides the password without submitting or changing its value', async ({
+  page,
+}) => {
+  await routes(page);
+  await page.addInitScript(() => localStorage.setItem('bank-converter-theme', 'dark'));
+  let created = 0;
+  await page.route('**/api/users', (route) => {
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postDataJSON().password).toBe('Test-password-2026');
+    created++;
+    return route.fulfill({ status: 201, json: { ...admin, id: 'new-user' } });
+  });
+  await page.goto('/users');
+  await page.getByRole('button', { name: 'Ajouter un utilisateur', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Ajouter un collaborateur' });
+  await dialog.getByLabel('Nom', { exact: true }).fill('Sara Test');
+  await dialog.getByLabel('E-mail', { exact: true }).fill('sara@example.test');
+  const password = dialog.getByLabel('Mot de passe', { exact: true });
+  await password.fill('Test-password-2026');
+  await expect(password).toHaveAttribute('type', 'password');
+  await dialog.getByRole('button', { name: 'Afficher le mot de passe', exact: true }).click();
+  await expect(password).toHaveAttribute('type', 'text');
+  await expect(password).toHaveValue('Test-password-2026');
+  await dialog.getByRole('button', { name: 'Masquer le mot de passe', exact: true }).click();
+  await expect(password).toHaveAttribute('type', 'password');
+  expect(created).toBe(0);
+  await dialog.locator('.dialog-body').evaluate((el) => el.scrollTo(0, 0));
+  await dialog.screenshot({ path: '../output/screenshots/user-editor-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await expect(
+    dialog.getByRole('button', { name: 'Créer l’utilisateur', exact: true }),
+  ).toBeInViewport();
+  await dialog.locator('.dialog-body').evaluate((el) => el.scrollTo(0, 0));
+  await dialog.screenshot({ path: '../output/screenshots/user-editor-mobile.png' });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await dialog.locator('.dialog-body').evaluate((el) => el.scrollTo(0, 0));
+  await dialog.screenshot({ path: '../output/screenshots/user-editor-dark.png' });
+  await dialog.getByRole('button', { name: 'Créer l’utilisateur', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(created).toBe(1);
+});
+
+test('Admin confirms user deletion, can cancel and cannot delete their own account', async ({
+  page,
+}) => {
+  await routes(page);
+  const collaborator = {
+    ...admin,
+    id: 'user-delete',
+    name: 'Sara Test',
+    email: 'sara@example.test',
+    role: 'User',
+  };
+  let items = [admin, collaborator];
+  let deletes = 0;
+  await page.route('**/api/users?**', (route) => route.fulfill({ json: pagination(items) }));
+  await page.route('**/api/users/user-delete?**', (route) => {
+    expect(route.request().method()).toBe('DELETE');
+    expect(new URL(route.request().url()).searchParams.get('version')).toBe('1');
+    deletes++;
+    items = [admin];
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto('/users');
+  await expect(
+    page.getByRole('button', { name: 'Supprimer Amine Admin', exact: true }),
+  ).toBeDisabled();
+  await page.getByRole('button', { name: 'Supprimer Sara Test', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Supprimer un utilisateur' });
+  await expect(dialog).toContainText('Sara Test');
+  await dialog.getByRole('button', { name: 'Annuler', exact: true }).click();
+  expect(deletes).toBe(0);
+  await page.getByRole('button', { name: 'Supprimer Sara Test', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Supprimer le compte', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByText('sara@example.test', { exact: true })).toHaveCount(0);
+  expect(deletes).toBe(1);
 });
 
 test('Historique : dates, auteurs et suppressions restent lisibles sur mobile', async ({
@@ -810,6 +996,111 @@ test('Historique : dates, auteurs et suppressions restent lisibles sur mobile', 
   await page.screenshot({ path: '../output/screenshots/history-mobile.png', fullPage: true });
   await page.getByRole('link', { name: 'Tout l’historique', exact: true }).click();
   await expect(page).toHaveURL(/\/history$/);
+});
+
+test('Historique : les détails présentent les valeurs et opérations sans données techniques', async ({
+  page,
+}) => {
+  await routes(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const operation = {
+    id: 'technical-operation-id',
+    sequence: 1,
+    date: '2026-09-01',
+    valueDate: '2026-09-02',
+    description: 'COMMISSION BANCAIRE',
+    debit: '10.00',
+    credit: null,
+  };
+  const added = Array.from({ length: 12 }, (_, index) => ({
+    ...operation,
+    id: `added-${index}`,
+    sequence: index + 2,
+    description: `VIREMENT ${index + 1}`,
+  }));
+  await page.route('**/api/client-workspace/history?**', (route) =>
+    route.fulfill({
+      json: pagination([
+        {
+          id: 'readable-event',
+          statementId: 'statement-1',
+          clientId: null,
+          clientName: '',
+          accountName: '',
+          bankName: 'BMCE Bank',
+          fileName: 'SOSMAJED9.pdf',
+          action: 'MODIFIED',
+          actorName: 'alias',
+          version: 3,
+          createdAt: '2026-10-15T12:07:49Z',
+          changesJson: JSON.stringify({
+            Status: { before: 'NEEDS_REVIEW', after: 'VALIDATED' },
+            Version: { before: 2, after: 3 },
+            NormalizedJson: {
+              before: JSON.stringify({ transactions: [operation] }),
+              after: JSON.stringify({ transactions: [{ ...operation, debit: '25.50' }, ...added] }),
+            },
+            Id: { before: null, after: 'private-technical-id' },
+          }),
+        },
+      ]),
+    }),
+  );
+  await page.route('**/api/extraction-profiles/history?**', (route) =>
+    route.fulfill({
+      json: pagination([
+        {
+          id: 'profile-event',
+          profileName: 'Modèle BMCE',
+          action: 'CREATED',
+          actorName: 'alias',
+          version: 1,
+          createdAt: '2026-10-15T12:07:49Z',
+          snapshotJson: JSON.stringify({
+            name: 'Modèle BMCE',
+            bankCode: 'BMCE',
+            isActive: true,
+            mapping: { dateColumn: 0 },
+            id: 'hidden-profile-id',
+          }),
+        },
+      ]),
+    }),
+  );
+  await page.goto('/history');
+  const event = page.locator('.history-event');
+  await event.getByText('Voir les modifications', { exact: true }).click();
+  const status = event
+    .locator('.history-readable-row')
+    .filter({ has: page.getByText('Statut', { exact: true }) });
+  await expect(status).toContainText('À vérifier');
+  await expect(status).toContainText('Validé');
+  await expect(event.getByText('12 ajoutées', { exact: true })).toBeVisible();
+  await expect(event.getByText('1 modifiée', { exact: true })).toBeVisible();
+  await expect(event.locator('.history-operation')).toHaveCount(10);
+  const modified = event.locator('.history-operation').first();
+  await modified.locator('summary').click();
+  await expect(modified).toContainText('10,00');
+  await expect(modified).toContainText('25,50');
+  await expect(page.locator('main pre')).toHaveCount(0);
+  await expect(event).not.toContainText('NormalizedJson');
+  await expect(event).not.toContainText('private-technical-id');
+  await expect(event).not.toContainText('technical-operation-id');
+  await event.getByRole('button', { name: /Afficher 10 opérations de plus/ }).click();
+  await expect(event.locator('.history-operation')).toHaveCount(13);
+  await event.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: '../output/screenshots/history-readable-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await event.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: '../output/screenshots/history-readable-mobile.png' });
+  await page.locator('.history-profiles > summary').click();
+  await page.getByText('Voir les réglages enregistrés', { exact: true }).click();
+  const profile = page.locator('.history-profile-content');
+  await expect(profile.getByText('Modèle actif', { exact: true })).toBeVisible();
+  await expect(profile.getByText('Oui', { exact: true })).toBeVisible();
+  await expect(profile).not.toContainText('hidden-profile-id');
+  await expect(profile).not.toContainText('dateColumn');
 });
 
 test('Import en page complète : classement visible sans fenêtres sur mobile', async ({ page }) => {
@@ -935,8 +1226,32 @@ test('Dashboard : graphiques, périodes et liens utilisent les données reçues'
   await page.addInitScript(() => localStorage.setItem('bank-converter-theme', 'light'));
   await page.goto('/dashboard');
   await expect(page.getByRole('heading', { name: 'Vue d’ensemble.' })).toBeVisible();
+  await expect(
+    page.locator('.topbar').getByRole('link', { name: 'Importer un PDF', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.overview-header').getByRole('region', { name: 'Prompt relevé', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.overview-header').getByRole('region', { name: 'Prompt extrait', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.overview-header').getByRole('button', { name: /Actualiser/ }),
+  ).toHaveCount(0);
+  await expect(page.locator('.overview-preparation')).toHaveCount(0);
   const metrics = page.getByRole('region', { name: 'Indicateurs de votre activité' });
-  await expect(metrics.getByRole('link', { name: /Relevés disponibles/ })).toContainText('42');
+  await expect(metrics.getByRole('link', { name: /Relevés disponibles/ })).toContainText('30');
+  await expect(metrics.getByRole('link', { name: /Extraits disponibles/ })).toContainText('12');
+  await expect(metrics.getByRole('link', { name: /Exports des relevés/ })).toContainText('40');
+  await expect(metrics.getByRole('link', { name: /Exports des extraits/ })).toContainText('24');
+  await expect(metrics.getByRole('link', { name: /Exports des extraits/ })).toHaveAttribute(
+    'href',
+    '/client-workspace?section=extracts',
+  );
+  await expect(metrics.getByRole('link', { name: /Exports des relevés/ })).toHaveAttribute(
+    'href',
+    '/client-workspace?section=statements',
+  );
   const chart = page.getByRole('region', { name: 'Activité des conversions' });
   await expect(chart.getByRole('button', { name: '30 jours', exact: true })).toHaveAttribute(
     'aria-pressed',
@@ -971,7 +1286,7 @@ test('Dashboard : graphiques, périodes et liens utilisent les données reçues'
     animations: 'disabled',
   });
   const requests = page.waitForResponse((response) => response.url().endsWith('/api/dashboard'));
-  await page.getByRole('button', { name: 'Actualiser le dashboard' }).click();
+  await page.getByRole('button', { name: 'Actualiser la page' }).click();
   await requests;
   await expect(chart.locator('.overview-chart-hit')).toHaveCount(30);
 });
@@ -1016,6 +1331,10 @@ test('Dashboard : absence de données et erreur récupérable sans chiffres inve
             banks: 0,
             accounts: 0,
             statements: 0,
+            statementDocuments: 0,
+            extracts: 0,
+            statementExports: 0,
+            extractExports: 0,
             exports: 0,
             pendingReview: 0,
             unassigned: 0,
@@ -1164,3 +1483,103 @@ test('Exported statements become validated only after explicit confirmation', as
   await page.getByRole('button', { name: 'Confirmer et valider', exact: true }).click();
   await expect(page.getByText('Validé', { exact: true })).toBeVisible();
 });
+
+test('Les deux prompts sont intégrés directement dans l’en-tête sans fenêtre supplémentaire', async ({
+  page,
+}) => {
+  await routes(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/dashboard');
+  const header = page.locator('.overview-header');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  for (const [label, file] of [
+    ['Prompt relevé', 'prompt-conversion-releve.txt'],
+    ['Prompt extrait', 'prompt-conversion-extrait.txt'],
+  ] as const) {
+    const card = header.getByRole('region', { name: label, exact: true });
+    await expect(card.getByRole('button', { name: 'Copier le prompt' })).toBeVisible();
+    const expected = await readFile(`public/resources/${file}`, 'utf8');
+    await card.getByRole('button', { name: 'Lire le prompt', exact: true }).click();
+    await expect(card.getByRole('textbox')).toHaveValue(expected);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect
+      .poll(async () =>
+        new URL(
+          (await card
+            .getByRole('link', { name: 'Ouvrir ChatGPT avec le prompt' })
+            .getAttribute('href'))!,
+        ).searchParams.get('q'),
+      )
+      .toBe(expected);
+    const pending = page.waitForEvent('download');
+    await card.getByRole('link', { name: 'Télécharger le prompt (.txt)' }).click();
+    expect(await readFile((await (await pending).path())!, 'utf8')).toBe(expected);
+    await card.getByRole('button', { name: 'Masquer', exact: true }).click();
+  }
+  await expect(
+    header.getByRole('link', { name: 'Fichier d’importation Sage 100 · releve.ema', exact: true }),
+  ).toHaveAttribute('download', 'releve.ema');
+  await mkdir('../output/screenshots', { recursive: true });
+  await header.screenshot({ path: '../output/screenshots/dashboard-inline-prompts.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await header.screenshot({ path: '../output/screenshots/dashboard-inline-prompts-mobile.png' });
+  const first = await header
+    .getByRole('region', { name: 'Prompt relevé', exact: true })
+    .boundingBox();
+  const second = await header
+    .getByRole('region', { name: 'Prompt extrait', exact: true })
+    .boundingBox();
+  expect(second!.y).toBeGreaterThan(first!.y + first!.height);
+});
+
+test('Actualisation et import PDF sont disponibles dans la navbar de chaque page', async ({
+  page,
+}) => {
+  await routes(page);
+  for (const path of [
+    '/dashboard',
+    '/clients',
+    '/banks',
+    '/bank-accounts',
+    '/templates',
+    '/conversions',
+    '/client-workspace',
+    '/history',
+    '/users',
+    '/settings',
+  ]) {
+    await page.goto(path);
+    const bar = page.locator('.topbar');
+    await expect(
+      bar.getByRole('button', { name: 'Actualiser la page', exact: true }),
+    ).toBeVisible();
+    await expect(bar.getByRole('link', { name: 'Importer un PDF', exact: true })).toHaveAttribute(
+      'href',
+      '/conversions?import=1',
+    );
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.locator('.topbar').getByRole('link', { name: 'Importer un PDF', exact: true }),
+  ).toBeVisible();
+  await page.locator('.topbar').getByRole('link', { name: 'Importer un PDF', exact: true }).click();
+  await expect(page).toHaveURL(/conversions\?import=1/);
+  await expect(page.locator('.conversion-import-page')).toBeVisible();
+});
+
+for (const entry of ['/login', '/conversions?import=1']) {
+  test(`La connexion depuis ${entry} ouvre la vue d’ensemble`, async ({ page }) => {
+    await routes(page, { signedOut: true });
+    await page.goto(entry);
+    await page.getByLabel('Adresse e-mail').fill('amine@example.test');
+    await page.getByLabel('Mot de passe', { exact: true }).fill('Fictional-password-2026');
+    await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
+    await expect(page).toHaveURL('/dashboard');
+    await expect(page.locator('.app-shell')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Vue d’ensemble', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+}

@@ -4,7 +4,7 @@
 [Setup]
 AppId={{A523F198-7FAD-40AE-B063-1BE5AE347E39}
 AppName=Alias Serveur
-AppVersion=1.1.6
+AppVersion=1.2.0
 DefaultDirName={autopf}\Alias Serveur
 DefaultGroupName=Alias Serveur
 PrivilegesRequired=admin
@@ -12,7 +12,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=..\output\installers
-OutputBaseFilename=Alias-Serveur-Setup-1.1.6
+OutputBaseFilename=Alias-Serveur-Setup-1.2.0
 Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
@@ -29,6 +29,8 @@ Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs c
 [Icons]
 Name: "{commondesktop}\Alias"; Filename: "{app}\Acces-Alias.url"; IconFilename: "{app}\Alias.ico"
 Name: "{group}\Ouvrir Alias"; Filename: "{app}\Acces-Alias.url"; IconFilename: "{app}\Alias.ico"
+Name: "{commondesktop}\Gestion du serveur Alias"; Filename: "{app}\management\Alias.ServerManager.exe"; IconFilename: "{app}\Alias.ico"
+Name: "{group}\Gestion du serveur Alias"; Filename: "{app}\management\Alias.ServerManager.exe"; IconFilename: "{app}\Alias.ico"
 
 [Code]
 var

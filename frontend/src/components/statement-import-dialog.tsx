@@ -14,12 +14,15 @@ export function StatementImportDialog({
   onClose,
   onImported,
   initialClientId = '',
+  initialConversionType = 'STATEMENT',
 }: {
   onClose: () => void;
   onImported: (detail: StatementDetail) => void;
   initialClientId?: string;
+  initialConversionType?: 'STATEMENT' | 'EXTRACT';
 }) {
   const [file, setFile] = useState<File | null>(null);
+  const [conversionType, setConversionType] = useState(initialConversionType);
   const [bankId, setBankId] = useState('');
   const [currency, setCurrency] = useState('MAD');
   const [clientId, setClientId] = useState(initialClientId);
@@ -48,6 +51,7 @@ export function StatementImportDialog({
     input.set('processingId', id);
     input.set('bankId', bankId);
     input.set('currency', currency);
+    input.set('conversionType', conversionType);
     if (clientId && accountId) {
       input.set('clientId', clientId);
       input.set('bankAccountId', accountId);
@@ -68,15 +72,52 @@ export function StatementImportDialog({
       <header className="import-page-header">
         <div>
           <p className="conversion-eyebrow">NOUVELLE CONVERSION</p>
-          <h1>Importer un relevé PDF</h1>
-          <p className="muted">Un document, un compte, une conversion prête à vérifier.</p>
+          <h1>
+            {conversionType === 'EXTRACT'
+              ? 'Convertir un extrait bancaire PDF'
+              : 'Importer un relevé PDF'}
+          </h1>
+          <p className="muted">
+            {conversionType === 'EXTRACT'
+              ? 'Importez un extrait existant. Ses opérations seront lues, contrôlées et converties avec le même modèle qu’un relevé.'
+              : 'Un document, un compte, une conversion prête à vérifier.'}
+          </p>
         </div>
         <Button variant="outline" disabled={busy} onClick={onClose}>
           Retour
         </Button>
       </header>
       <form onSubmit={submit} className="import-page-form">
-        <ConversionSteps current={1} />
+        <fieldset className="conversion-type-options" disabled={busy}>
+          <legend>Type de conversion</legend>
+          <label className={conversionType === 'STATEMENT' ? 'is-selected' : ''}>
+            <input
+              type="radio"
+              name="conversionType"
+              value="STATEMENT"
+              checked={conversionType === 'STATEMENT'}
+              onChange={() => setConversionType('STATEMENT')}
+            />
+            <span>
+              <strong>Relevé bancaire</strong>
+              <small>Convertir toutes les opérations du relevé.</small>
+            </span>
+          </label>
+          <label className={conversionType === 'EXTRACT' ? 'is-selected' : ''}>
+            <input
+              type="radio"
+              name="conversionType"
+              value="EXTRACT"
+              checked={conversionType === 'EXTRACT'}
+              onChange={() => setConversionType('EXTRACT')}
+            />
+            <span>
+              <strong>Extrait de relevé bancaire</strong>
+              <small>Convertir toutes les opérations du PDF extrait fourni.</small>
+            </span>
+          </label>
+        </fieldset>
+        <ConversionSteps current={1} extractMode={conversionType === 'EXTRACT'} />
         {busy && (
           <p className="muted text-sm">
             Lecture automatique du PDF, puis revue des mouvements et des soldes.
@@ -110,7 +151,12 @@ export function StatementImportDialog({
             <span className="import-upload-icon">
               {file ? <CheckCircle2 size={28} /> : <Upload size={28} />}
             </span>
-            <strong>{file?.name || 'Déposez votre relevé PDF ici'}</strong>
+            <strong>
+              {file?.name ||
+                (conversionType === 'EXTRACT'
+                  ? 'Déposez votre extrait PDF ici'
+                  : 'Déposez votre relevé PDF ici')}
+            </strong>
             <span>
               {file
                 ? `${file.size < 1024 * 1024 ? `${Math.max(1, Math.ceil(file.size / 1024))} Ko` : `${(file.size / 1024 / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Mo`} · Cliquez pour changer de fichier`
@@ -248,7 +294,7 @@ export function StatementImportDialog({
                   ? 'Choisissez la banque pour continuer.'
                   : clientId && !accountId
                     ? 'Choisissez le compte bancaire du client.'
-                    : 'Tout est prêt pour convertir votre relevé.'}
+                    : 'Tout est prêt pour traiter votre PDF.'}
           </p>
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" disabled={busy} onClick={onClose}>

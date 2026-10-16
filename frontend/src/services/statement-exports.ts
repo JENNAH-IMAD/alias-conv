@@ -2,6 +2,7 @@ import { API_URL, apiError, ExportDiagnostic } from './api';
 import { ExportDestination, saveExportBlob } from '@/lib/save-export';
 export type Money = string | number | null;
 export type StatementTransaction = {
+  sourcePages?: number[] | null;
   id: string;
   sequence: number;
   date: string | null;
@@ -19,7 +20,22 @@ export type StatementTransaction = {
   analytic?: string | null;
   recordType?: string | null;
 };
+export type StatementExtract = {
+  excludeText?: string;
+  id: string;
+  filterText: string;
+  createdAt: string;
+  sourceVersion: number;
+  currency: string | null;
+  transactions: StatementTransaction[];
+  totalDebit: Money;
+  totalCredit: Money;
+  balance: Money;
+};
 export type BankStatement = {
+  conversionType?: 'STATEMENT' | 'EXTRACT';
+  extracts?: StatementExtract[];
+  accountHolder?: string | null;
   id: string;
   bankName: string;
   bankCode: string | null;
@@ -115,6 +131,7 @@ export type PdfTextDocument = {
   }[];
 };
 export type ExportPreview = {
+  extractId?: string | null;
   text?: string | null;
   textTruncated?: boolean;
   rowColumnIndices?: number[][];
@@ -195,6 +212,7 @@ export async function downloadExport(
       headers: { 'Content-Type': 'application/json', 'X-Alias-Request': '1' },
       body: JSON.stringify({
         statementVersion: preview.statementVersion,
+        ...(preview.extractId ? { extractId: preview.extractId } : {}),
         templateFingerprint: preview.templateFingerprint,
         ...(options?.allowErrors ? { allowErrors: true } : {}),
         ...(options?.editedText != null ? { editedText: options.editedText } : {}),

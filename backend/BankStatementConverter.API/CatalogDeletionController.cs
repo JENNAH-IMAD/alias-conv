@@ -14,6 +14,7 @@ public class CatalogDeletionController(AppDbContext db) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Delete(string resource, Guid id, ConfirmCatalogDeletion input, CancellationToken ct)
     {
-        await new CatalogDeletionService(db).DeleteAsync(resource, id, input.Version, ct); return NoContent();
+        await new CatalogDeletionService(db).DeleteAsync(resource, id, input.Version, ct);
+        return NoContent();
     }
 }

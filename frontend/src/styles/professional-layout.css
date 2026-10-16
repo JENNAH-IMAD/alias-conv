@@ -1,0 +1,361 @@
+/* Shared layout rules, applied after the page styles to keep spacing and controls consistent. */
+.app-shell .main-content {
+  width: 100%;
+  padding: 24px;
+}
+.app-shell .ui-page {
+  gap: 20px;
+}
+.app-shell .page-header {
+  padding: 24px;
+  background: linear-gradient(110deg, var(--surface) 55%, var(--surface-alt));
+  box-shadow: none;
+}
+.app-shell .page-header-copy {
+  align-items: center;
+  gap: 14px;
+}
+.app-shell .page-header-icon {
+  border: 0;
+  width: 44px;
+  height: 44px;
+  background: var(--accent);
+  color: var(--link);
+}
+.app-shell .page-header-actions .ui-button {
+  max-width: 100%;
+}
+.app-shell .ui-button[data-size='default'] {
+  min-height: 40px;
+}
+.app-shell .ui-button[data-size='icon'] {
+  width: 40px;
+  height: 40px;
+}
+.app-shell .catalog-toolbar {
+  gap: 16px;
+  align-items: flex-end;
+}
+.catalog-toolbar > label {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--muted-foreground);
+}
+.catalog-toolbar input,
+.catalog-toolbar select {
+  color: var(--foreground);
+  font-weight: 400;
+}
+.catalog-grid > article {
+  min-width: 0;
+}
+.app-shell .catalog-card-actions,
+.app-shell .client-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.catalog-card-actions > .danger-button,
+.catalog-delete-action,
+.client-actions > .danger-button {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.bank-card-actions .catalog-main-action {
+  color: var(--link);
+  background: var(--accent);
+}
+.app-shell .bank-card-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr) 40px;
+}
+.bank-card-actions .ui-button {
+  padding-inline: 8px;
+  margin-left: 0;
+}
+.bank-card-statistics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+.bank-card-statistics dt {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  margin-bottom: 6px;
+}
+.bank-card-statistics dd {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.bank-card-description {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+  margin: 16px 0;
+}
+.app-shell .client-card > .my-5 {
+  margin-block: 16px;
+}
+.client-contact {
+  min-height: 30px;
+}
+.template-field-summary > div {
+  gap: 6px;
+}
+.pagination {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.pagination .ui-button {
+  color: var(--foreground);
+}
+.statement-archive-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.statement-archive-heading > div {
+  min-width: 0;
+}
+.statement-archive-heading h2 {
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+.statement-archive-heading p {
+  font-size: 12px;
+  margin-top: 5px;
+}
+.statement-retention-note {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.7;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+.client-workspace-page .workspace-document-tabs {
+  margin-block: 0;
+  padding-top: 0;
+}
+.client-workspace-page .workspace-profile p {
+  overflow-wrap: anywhere;
+}
+.history-event-heading {
+  justify-content: flex-start;
+}
+.history-event-heading > .history-row-actions {
+  display: contents;
+}
+.history-event-heading .history-action {
+  order: 1;
+}
+.history-event-heading time {
+  order: 2;
+  margin-left: auto;
+}
+.history-event-heading .history-row-actions > button {
+  order: 3;
+}
+.history-profile-content .history-row-actions {
+  justify-content: space-between;
+}
+.history-selection-bar {
+  font-size: 12px;
+}
+.settings-form {
+  width: min(100%, 920px);
+}
+.settings-form > fieldset {
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+}
+.settings-form > div:last-child,
+.dialog-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  margin-top: 22px;
+}
+.settings-form > div:last-child > p {
+  margin-right: auto;
+}
+.overview-inline-models a {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.6;
+}
+.overview-inline-models svg {
+  flex-shrink: 0;
+}
+.statement-pdf-viewer:has(.pdf-viewer-error) .pdf-viewer-scroll,
+.statement-pdf-viewer:has(.pdf-viewer-error) .pdf-viewer-toolbar {
+  display: none;
+}
+@media (max-width: 1050px) {
+  .statement-archive-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 650px) {
+  .history-event-heading .history-row-actions > button {
+    margin-left: auto;
+  }
+  .history-event-heading time {
+    order: 4;
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .app-shell .main-content {
+    padding: 14px;
+  }
+  .app-shell .page-header {
+    padding: 18px;
+    gap: 18px;
+  }
+  .app-shell .page-header-copy {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+  }
+  .app-shell .page-header-icon {
+    width: 36px;
+    height: 36px;
+    margin-top: 2px;
+    border-radius: 10px;
+  }
+  .page-header-icon svg {
+    width: 21px;
+    height: 21px;
+  }
+  .app-shell .page-header .ui-title {
+    font-size: 23px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .app-shell .page-header .ui-description {
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .app-shell .page-header-actions {
+    width: 100%;
+  }
+  .page-header-actions .ui-button {
+    width: 100%;
+    white-space: normal;
+    height: auto;
+    min-height: 44px;
+  }
+  .catalog-toolbar > label {
+    min-width: 0;
+    width: 100%;
+  }
+  .app-shell .team-summary,
+  .app-shell .history-overview {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .app-shell .team-stat,
+  .app-shell .history-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 12px;
+    gap: 8px;
+  }
+  .history-stat:last-child {
+    grid-column: auto;
+  }
+  .team-stat > svg,
+  .history-stat > svg {
+    width: 16px;
+    height: 16px;
+    padding: 6px;
+    border-radius: 8px;
+  }
+  .team-stat small,
+  .history-stat span {
+    display: block;
+    font-size: 10px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  .team-stat strong,
+  .history-stat strong {
+    font-size: 20px;
+    overflow-wrap: anywhere;
+  }
+  .history-stat:last-child strong {
+    font-size: 13px;
+  }
+  .overview-metric-top {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  .overview-metric-top h2 {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 30px;
+    line-height: 1.5;
+  }
+  .overview-metric-top > svg {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .overview-metric-top .overview-icon {
+    width: 30px;
+    height: 30px;
+  }
+  .overview-metric-top .overview-icon svg {
+    width: 17px;
+    height: 17px;
+  }
+  .pagination {
+    align-items: flex-start;
+  }
+  .pagination > div {
+    width: 100%;
+  }
+  .pagination .ui-button {
+    flex: 1;
+    min-width: 0;
+    padding-inline: 10px;
+  }
+  .dialog-form-actions .ui-button {
+    flex: 1 1 auto;
+  }
+  .statement-archive-heading > .ui-button {
+    width: 100%;
+  }
+  .settings-form > div:last-child > .ui-button {
+    width: 100%;
+  }
+}
+@media (max-width: 360px) {
+  .app-shell .bank-card-actions {
+    grid-template-columns: minmax(0, 1fr) 40px;
+  }
+}

@@ -17,6 +17,8 @@ export function StatementModelStep({
   error,
   onRetry,
   onImport,
+  extractMode = detail.statement.conversionType === 'EXTRACT',
+  extractId,
 }: {
   detail: StatementDetail;
   templates: ExportTemplate[];
@@ -27,6 +29,8 @@ export function StatementModelStep({
   error: string;
   onRetry: () => void;
   onImport?: () => void;
+  extractMode?: boolean;
+  extractId?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
@@ -46,6 +50,9 @@ export function StatementModelStep({
           body: JSON.stringify({
             statementVersion: adaptation.detail.version,
             templateId: model.id,
+            ...(extractMode && adaptation.detail.statement.extracts?.length
+              ? { extractId: extractId ?? adaptation.detail.statement.extracts.at(-1)?.id }
+              : {}),
           }),
         },
       );
@@ -79,7 +86,11 @@ export function StatementModelStep({
         <div>
           <p className="conversion-eyebrow">FORMAT DE SORTIE</p>
           <h1>Quel fichier souhaitez-vous obtenir ?</h1>
-          <p>Le résultat sera adapté aux colonnes et aux formats du modèle choisi.</p>
+          <p>
+            {extractMode
+              ? 'Choisissez le même modèle que pour un relevé. Toutes les opérations de l’extrait PDF seront converties, puis présentées pour vérification.'
+              : 'Le résultat sera adapté aux colonnes et aux formats du modèle choisi.'}
+          </p>
         </div>
       </div>
       <div className="model-step-document">

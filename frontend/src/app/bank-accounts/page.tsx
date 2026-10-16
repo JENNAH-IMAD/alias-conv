@@ -11,6 +11,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { Account, Page, request } from '@/services/api';
 import { useApi } from '@/services/use-api';
 import { PageHeader } from '@/components/page-header';
+import { BankDialog } from '@/components/bank-dialogs';
 export default function BankAccountsPage() {
   const [page, setPage] = useState(1);
   const { data, error, loading, reload } = useApi<Page<Account>>(
@@ -19,12 +20,14 @@ export default function BankAccountsPage() {
   const [editing, setEditing] = useState<Account | null | undefined>(undefined);
   const [actionError, setActionError] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   async function remove(item: Account) {
-    if (deleting || !confirm(`Supprimer le compte « ${item.accountName} » ?`)) return;
+    if (deleting) return;
     setActionError('');
     setDeleting(item.id);
     try {
       await request(`/bank-accounts/${item.id}`, { method: 'DELETE' });
+      setDeleteTarget(null);
       if (data?.items.length === 1 && page > 1) setPage(page - 1);
       else reload();
     } catch (e) {
@@ -119,7 +122,7 @@ export default function BankAccountsPage() {
               <CardFooter className="flex flex-wrap justify-between gap-3 border-t border-border pt-4">
                 <Button asChild variant="ghost" size="sm" className="text-[var(--link)]">
                   <Link href={`/client-workspace?clientId=${encodeURIComponent(account.clientId)}`}>
-                    Importer un relevé <ArrowUpRight />
+                    Voir les relevés <ArrowUpRight />
                   </Link>
                 </Button>
                 <div className="flex gap-2">
@@ -139,7 +142,10 @@ export default function BankAccountsPage() {
                     disabled={deleting !== null}
                     aria-label={`Supprimer ${account.accountName}`}
                     title="Supprimer le compte"
-                    onClick={() => void remove(account)}
+                    onClick={() => {
+                      setActionError('');
+                      setDeleteTarget(account);
+                    }}
                   >
                     <Trash2 />
                   </Button>
@@ -149,11 +155,41 @@ export default function BankAccountsPage() {
           ))}
         </div>
         {!loading && !!data?.total && (
-          <div className="border-t border-border pt-2">
-            <Pagination page={page} total={data.total} onChange={setPage} />
-          </div>
+          <Pagination page={page} total={data.total} loading={loading} onChange={setPage} />
         )}
       </section>
+      {deleteTarget && (
+        <BankDialog
+          title="Supprimer le compte bancaire"
+          busy={!!deleting}
+          onClose={() => setDeleteTarget(null)}
+        >
+          <p>
+            Supprimer le compte <strong>{deleteTarget.accountName}</strong> ?
+          </p>
+          <p className="muted text-sm mt-2">
+            {deleteTarget.bank} · {deleteTarget.accountNumber}
+          </p>
+          {actionError && (
+            <p role="alert" className="conversion-alert error mt-4">
+              {actionError}
+            </p>
+          )}
+          <div className="dialog-form-actions">
+            <Button variant="outline" disabled={!!deleting} onClick={() => setDeleteTarget(null)}>
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!!deleting}
+              onClick={() => void remove(deleteTarget)}
+            >
+              <Trash2 size={15} />
+              {deleting ? 'Suppression…' : 'Supprimer le compte'}
+            </Button>
+          </div>
+        </BankDialog>
+      )}
       {editing !== undefined && (
         <ResourceEditor
           resource="bank-accounts"

@@ -6,14 +6,24 @@ namespace BankStatementConverter.API;
 
 public class DocumentForm
 {
-    public Guid ClientId { get; set; }
-    public Guid BankAccountId { get; set; }
-    public IFormFile? File { get; set; }
+    public Guid ClientId
+    {
+        get; set;
+    }
+    public Guid BankAccountId
+    {
+        get; set;
+    }
+    public IFormFile? File
+    {
+        get; set;
+    }
 }
 [ApiController, Route("api/documents")]
 public class DocumentsController(DocumentService service, AppDbContext db, IFileStorageService storage) : ControllerBase
 {
-    [HttpGet] public Task<PageResult<DocumentDto>> List(CancellationToken ct, Guid? clientId = null, int page = 1, int pageSize = 20)
+    [HttpGet]
+    public Task<PageResult<DocumentDto>> List(CancellationToken ct, Guid? clientId = null, int page = 1, int pageSize = 20)
         => service.ListAsync(clientId, page, pageSize, ct);
     [HttpGet("{id:guid}")]
     public async Task<DocumentDto> Get(Guid id, CancellationToken ct) => await db.Documents.AsNoTracking().Where(x => x.Id == id)
@@ -23,7 +33,10 @@ public class DocumentsController(DocumentService service, AppDbContext db, IFile
     {
         await using var source = input.File?.OpenReadStream();
         var result = await service.SaveAsync(null, input.ClientId, input.BankAccountId, source, input.File?.FileName, input.File?.ContentType, input.File?.Length ?? 0, ct);
-        return CreatedAtAction(nameof(Get), new { id = result.Id }, result);
+        return CreatedAtAction(nameof(Get), new
+        {
+            id = result.Id
+        }, result);
     }
     [HttpPut("{id:guid}"), Consumes("multipart/form-data")]
     public async Task<DocumentDto> Edit(Guid id, [FromForm] DocumentForm input, CancellationToken ct)
@@ -38,6 +51,10 @@ public class DocumentsController(DocumentService service, AppDbContext db, IFile
         Response.Headers.CacheControl = "no-store";
         return download ? File(storage.Open(item.StorageKey), "application/pdf", item.FileName) : File(storage.Open(item.StorageKey), "application/pdf");
     }
-    [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
-    { await service.DeleteAsync(id, ct); return NoContent(); }
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        await service.DeleteAsync(id, ct);
+        return NoContent();
+    }
 }

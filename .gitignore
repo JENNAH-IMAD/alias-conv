@@ -44,3 +44,10 @@ backend/BankStatementConverter.API/appsettings.Development.json
 **/ocr.protected
 **/.keys/
 **/.settings/
+Desktop-Install/
+
+# Rapports et caches produits par les outils de verification
+/.codex-test-artifacts/
+**/coverage/
+**/playwright-report/
+**/test-results/

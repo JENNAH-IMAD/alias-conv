@@ -1,7 +1,11 @@
 import type { StatementTransaction } from '@/services/statement-exports';
 import { createUuid } from './create-uuid';
+import { emptyMovementAmount, normalizeMovementAmounts } from './statement-amounts';
 
-export type EditableTransactionField = Exclude<keyof StatementTransaction, 'id' | 'sequence'>;
+export type EditableTransactionField = Exclude<
+  keyof StatementTransaction,
+  'id' | 'sequence' | 'sourcePages'
+>;
 
 // Monetary values stay decimal strings. Related fields are synchronized only when requested.
 export function editTransactionValue(
@@ -10,8 +14,11 @@ export function editTransactionValue(
   value: string | null,
   synchronize = true,
 ): StatementTransaction {
+  row = normalizeMovementAmounts(row);
+  if (field === 'debit' || field === 'credit' || field === 'amount')
+    value = emptyMovementAmount(value) as string | null;
   const next = { ...row, [field]: value };
-  if (!synchronize) return next;
+  if (!synchronize) return normalizeMovementAmounts(next);
   if (value !== null && (field === 'debit' || field === 'credit')) {
     return {
       ...next,
@@ -25,12 +32,12 @@ export function editTransactionValue(
       row.direction === 'DEBIT' ||
       (row.direction !== 'CREDIT' && row.debit !== null && row.credit === null)
     )
-      return { ...next, debit: value, credit: null, direction: 'DEBIT' };
+      return normalizeMovementAmounts({ ...next, debit: value, credit: null, direction: 'DEBIT' });
     if (
       row.direction === 'CREDIT' ||
       (row.direction !== 'DEBIT' && row.credit !== null && row.debit === null)
     )
-      return { ...next, credit: value, debit: null, direction: 'CREDIT' };
+      return normalizeMovementAmounts({ ...next, credit: value, debit: null, direction: 'CREDIT' });
   }
   if (field === 'direction' && (value === 'DEBIT' || value === 'CREDIT')) {
     const magnitude =
@@ -50,8 +57,8 @@ export function editTransactionValue(
       };
   }
   if (value === null && (field === 'debit' || field === 'credit') && row.amount === row[field])
-    return { ...next, amount: null };
-  return next;
+    return normalizeMovementAmounts({ ...next, amount: null });
+  return normalizeMovementAmounts(next);
 }
 
 export function newStatementTransaction(rows: StatementTransaction[]): StatementTransaction {

@@ -10,7 +10,8 @@ public static class StatementAdaptationMetadata
     // identified as computed and still equal to the old movement sum.
     public static BankStatement ForReplay(BankStatement statement, IReadOnlyList<ExportError> warnings)
     {
-        if (!warnings.Any(w => w.Code == "PDF_TOTALS_COMPUTED")) return statement;
+        if (!warnings.Any(w => w.Code == "PDF_TOTALS_COMPUTED"))
+            return statement;
         try
         {
             var debit = statement.Transactions.Sum(t => t.Debit ?? 0m);

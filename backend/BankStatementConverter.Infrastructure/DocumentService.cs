@@ -36,7 +36,8 @@ public class DocumentService(AppDbContext db, IFileStorageService storage, IConf
                 Validation.Require(length > 0 && length <= limit && contentType == "application/pdf" &&
                     string.Equals(Path.GetExtension(name), ".pdf", StringComparison.OrdinalIgnoreCase), "Choisissez un PDF de 20 Mo maximum.");
                 using var buffer = new MemoryStream();
-                var chunk = new byte[81920]; int count;
+                var chunk = new byte[81920];
+                int count;
                 while ((count = await source.ReadAsync(chunk, ct)) > 0)
                 {
                     Validation.Require(buffer.Length + count <= limit, "PDF trop volumineux.");
@@ -45,13 +46,19 @@ public class DocumentService(AppDbContext db, IFileStorageService storage, IConf
                 Validation.Require(buffer.Length >= 5 && Encoding.ASCII.GetString(buffer.GetBuffer(), 0, 5) == "%PDF-", "Signature PDF invalide.");
                 buffer.Position = 0;
                 saved = await storage.SaveAsync(buffer, "input", "pdf", ct);
-                if (id.HasValue) db.PendingFileDeletions.Add(new() { StorageKey = item.StorageKey });
+                if (id.HasValue)
+                    db.PendingFileDeletions.Add(new()
+                    {
+                        StorageKey = item.StorageKey
+                    });
                 item.StorageKey = saved;
                 item.FileName = Path.GetFileName(name!.Replace('\\', '/'));
                 Validation.Text(item.FileName, "Nom du fichier", 2000);
             }
-            item.ClientId = clientId; item.BankAccountId = accountId;
-            if (!id.HasValue) db.Documents.Add(item);
+            item.ClientId = clientId;
+            item.BankAccountId = accountId;
+            if (!id.HasValue)
+                db.Documents.Add(item);
             await db.SaveChangesAsync(ct);
             var result = await db.Documents.Where(x => x.Id == item.Id).Select(Projection).SingleAsync(ct);
             await tx.CommitAsync(ct);
@@ -65,8 +72,12 @@ public class DocumentService(AppDbContext db, IFileStorageService storage, IConf
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var item = await db.Documents.FromSqlInterpolated($"SELECT * FROM \"Documents\" WHERE \"Id\" = {id} FOR UPDATE")
             .SingleOrDefaultAsync(ct) ?? throw new AppException(404, "Document introuvable.");
-        db.PendingFileDeletions.Add(new() { StorageKey = item.StorageKey });
+        db.PendingFileDeletions.Add(new()
+        {
+            StorageKey = item.StorageKey
+        });
         db.Documents.Remove(item);
-        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
     }
 }

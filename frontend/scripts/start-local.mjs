@@ -4,7 +4,12 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const dist = process.env.ALIAS_RUNTIME_BUILD === '1' ? '.next-runtime' : process.env.ALIAS_DESKTOP_BUILD === '1' ? '.next-desktop' : '.next';
+const dist =
+  process.env.ALIAS_RUNTIME_BUILD === '1'
+    ? '.next-runtime'
+    : process.env.ALIAS_DESKTOP_BUILD === '1'
+      ? '.next-desktop'
+      : '.next';
 const standalone = path.join(root, dist, 'standalone');
 const server = path.join(standalone, 'server.js');
 if (!existsSync(server)) {

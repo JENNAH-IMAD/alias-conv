@@ -4,14 +4,13 @@ import Link from 'next/link';
 import {
   Users,
   Wallet,
-  Plus,
   ArrowUpRight,
   ArrowRight,
   ArrowRightLeft,
   FileOutput,
   FolderOpen,
-  RefreshCw,
   FileText,
+  FileSearch,
   CheckCircle2,
   Clock3,
   CalendarDays,
@@ -23,7 +22,10 @@ import { useApi } from '@/services/use-api';
 import { Button } from '@/components/ui/button';
 import { LoadState } from '@/components/ui/load-state';
 import { ActivityChart, StatusChart, statusInfo } from '@/components/dashboard-charts';
-import { DashboardConversionResources } from '@/components/dashboard-conversion-resources';
+import {
+  DashboardModelDownloads,
+  DashboardPromptActions,
+} from '@/components/conversion-prompt-resources';
 
 const number = (value: number | undefined) => value?.toLocaleString('fr-FR') ?? '—';
 export default function DashboardPage() {
@@ -41,20 +43,38 @@ export default function DashboardPage() {
   const metrics = [
     {
       label: 'Relevés disponibles',
-      value: data?.statements,
+      value: data?.statementDocuments,
       icon: FileText,
       tone: 'blue',
       note: 'Dans votre espace clients',
-      href: '/client-workspace',
+      href: '/client-workspace?section=statements',
       permission: 'documents.read',
     },
     {
-      label: 'Exports générés',
-      value: data?.exports,
+      label: 'Extraits disponibles',
+      value: data?.extracts,
+      icon: FileSearch,
+      tone: 'blue',
+      note: 'Extraits bancaires convertis',
+      href: '/client-workspace?section=extracts',
+      permission: 'documents.read',
+    },
+    {
+      label: 'Exports des relevés',
+      value: data?.statementExports,
       icon: FileOutput,
       tone: 'teal',
       note: 'Fichiers CSV et Sage',
-      href: '/client-workspace',
+      href: '/client-workspace?section=statements',
+      permission: 'documents.read',
+    },
+    {
+      label: 'Exports des extraits',
+      value: data?.extractExports,
+      icon: FileOutput,
+      tone: 'teal',
+      note: 'Fichiers CSV et Sage',
+      href: '/client-workspace?section=extracts',
       permission: 'documents.read',
     },
     {
@@ -79,7 +99,7 @@ export default function DashboardPage() {
   return (
     <div className="ui-page overview-page">
       <header className="overview-header">
-        <div>
+        <div className="overview-welcome">
           <p className="overview-eyebrow">
             <i />
             TABLEAU DE BORD
@@ -91,24 +111,9 @@ export default function DashboardPage() {
             Bonjour{user?.name ? ` ${user.name.split(' ')[0]}` : ''}, retrouvez votre activité et
             vos derniers relevés.
           </p>
+          <DashboardModelDownloads />
         </div>
-        <div className="overview-header-actions">
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={loading}
-            onClick={reload}
-            aria-label="Actualiser le dashboard"
-          >
-            <RefreshCw size={17} className={loading ? 'animate-spin' : ''} />
-          </Button>
-          <Button permission="documents.write" asChild>
-            <Link href="/conversions?import=1">
-              <Plus size={17} />
-              Importer et convertir
-            </Link>
-          </Button>
-        </div>
+        <DashboardPromptActions />
       </header>
       <LoadState loading={loading} error={error} />
       {error && (
@@ -116,35 +121,75 @@ export default function DashboardPage() {
           Réessayer
         </Button>
       )}
-      <section className="overview-metrics" aria-label="Indicateurs de votre activité">
-        {metrics.map(({ label, value, icon: Icon, tone, note, href, permission }) => {
-          const content = (
-            <>
-              <div className="overview-metric-top">
-                <span className={`overview-icon ${tone}`}>
-                  <Icon size={21} />
-                </span>
-                {can(permission) && <ArrowUpRight size={16} />}
-              </div>
-              <p className="overview-metric-value">{number(value)}</p>
-              <h2>{label}</h2>
-              <p className="overview-metric-note">{note}</p>
-            </>
-          );
-          return can(permission) ? (
-            <Link key={label} href={href} className="overview-card overview-metric">
-              {content}
-            </Link>
-          ) : (
-            <article key={label} className="overview-card overview-metric">
-              {content}
-            </article>
-          );
-        })}
+      <section className="overview-indicators" aria-label="Indicateurs de votre activité">
+        <div className="overview-section-intro">
+          <div>
+            <h2>Votre activité en chiffres</h2>
+            <p>Documents, exports et dossiers de votre espace.</p>
+          </div>
+          {data?.updatedAt && (
+            <span className="overview-freshness">
+              <span className="overview-dot teal" />
+              Actualisé à{' '}
+              {new Date(data.updatedAt).toLocaleTimeString('fr-FR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          )}
+        </div>
+        <div className="overview-metrics">
+          {metrics.map(({ label, value, icon: Icon, tone, note, href, permission }) => {
+            const content = (
+              <>
+                <div className="overview-metric-top">
+                  <span className={`overview-icon ${tone}`}>
+                    <Icon size={21} />
+                  </span>
+                  <h2>{label}</h2>
+                  {can(permission) && <ArrowUpRight size={16} />}
+                </div>
+                <p className="overview-metric-value">{number(value)}</p>
+                <p className="overview-metric-note">{note}</p>
+              </>
+            );
+            return can(permission) ? (
+              <Link key={label} href={href} className="overview-card overview-metric">
+                {content}
+              </Link>
+            ) : (
+              <article key={label} className="overview-card overview-metric">
+                {content}
+              </article>
+            );
+          })}
+        </div>
       </section>
-      <DashboardConversionResources />
       {can('documents.read') && (
         <>
+          {data && !error && (
+            <section className="overview-review-strip" aria-label="À suivre">
+              <span className={`overview-icon ${data.pendingReview ? 'amber' : 'teal'}`}>
+                {data.pendingReview ? <Clock3 size={21} /> : <CheckCircle2 size={21} />}
+              </span>
+              <div>
+                <h2>
+                  {data.pendingReview
+                    ? `${number(data.pendingReview)} relevé(s) à vérifier`
+                    : 'Aucun relevé en attente de vérification'}
+                </h2>
+                <p>
+                  {data.unassigned
+                    ? `${number(data.unassigned)} relevé(s) à rattacher à un compte bancaire.`
+                    : 'Retrouvez vos relevés et les exports associés dans l’espace clients.'}
+                </p>
+              </div>
+              <Link href="/client-workspace">
+                Ouvrir les relevés
+                <ArrowRight size={16} />
+              </Link>
+            </section>
+          )}
           <div className="overview-charts">
             <section
               className="overview-card overview-activity"
@@ -197,11 +242,14 @@ export default function DashboardPage() {
                 <div className="overview-chart-placeholder" aria-hidden="true" />
               )}
             </section>
-            <section className="overview-card overview-status" aria-label="Statuts des relevés">
+            <section
+              className="overview-card overview-status"
+              aria-label="Statuts des relevés et extraits"
+            >
               <div className="overview-card-heading">
                 <div>
-                  <h2>État des relevés</h2>
-                  <p>La répartition des relevés disponibles.</p>
+                  <h2>État des relevés et extraits</h2>
+                  <p>La répartition de vos documents bancaires.</p>
                 </div>
                 <span className="overview-icon blue">
                   <FileText size={18} />
@@ -214,29 +262,6 @@ export default function DashboardPage() {
               )}
             </section>
           </div>
-          {data && !error && (
-            <section className="overview-review-strip" aria-label="À suivre">
-              <span className={`overview-icon ${data.pendingReview ? 'amber' : 'teal'}`}>
-                {data.pendingReview ? <Clock3 size={21} /> : <CheckCircle2 size={21} />}
-              </span>
-              <div>
-                <h2>
-                  {data.pendingReview
-                    ? `${number(data.pendingReview)} relevé(s) à vérifier`
-                    : 'Aucun relevé en attente de vérification'}
-                </h2>
-                <p>
-                  {data.unassigned
-                    ? `${number(data.unassigned)} relevé(s) à rattacher à un compte bancaire.`
-                    : 'Retrouvez vos relevés et les exports associés dans l’espace clients.'}
-                </p>
-              </div>
-              <Link href="/client-workspace">
-                Ouvrir les relevés
-                <ArrowRight size={16} />
-              </Link>
-            </section>
-          )}
         </>
       )}
       <div className="overview-bottom">
@@ -257,12 +282,9 @@ export default function DashboardPage() {
                 <FolderOpen size={30} />
                 <h3>Votre premier relevé vous attend.</h3>
                 <p>Importez un PDF pour commencer une conversion.</p>
-                <Button permission="documents.write" asChild>
-                  <Link href="/conversions?import=1">
-                    <Plus size={16} />
-                    Importer un relevé
-                  </Link>
-                </Button>
+                <Link href="/conversions" className="overview-text-link">
+                  Ouvrir les conversions <ArrowRight size={16} />
+                </Link>
               </div>
             )}
             {!!data?.recent.length && (

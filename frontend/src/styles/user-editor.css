@@ -1,0 +1,193 @@
+.app-dialog.user-editor-dialog {
+  width: min(900px, calc(100vw - 32px));
+  max-width: 900px;
+  border-radius: 20px;
+}
+.user-editor-dialog .dialog-header {
+  padding: 22px 24px;
+  margin-bottom: 0;
+  align-items: center;
+  background: var(--surface);
+}
+.user-editor-dialog .dialog-header h2 {
+  font-size: 21px;
+  line-height: 1.3;
+}
+.user-editor-dialog .dialog-body {
+  padding: 22px 24px;
+}
+.user-editor-intro {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.user-editor-avatar {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  color: var(--link);
+  background: var(--surface-alt);
+  flex-shrink: 0;
+}
+.user-editor-intro h3,
+.user-permissions-heading h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.user-editor-intro p,
+.user-permissions-heading p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.user-account-fields {
+  padding: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 14px;
+  gap: 18px;
+  align-items: start;
+}
+.user-account-fields label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.user-account-fields .ui-input {
+  height: 43px;
+  font-weight: 400;
+  font-size: 14px;
+}
+.user-password-control {
+  position: relative;
+  margin-top: 8px;
+}
+.user-password-control .ui-input {
+  padding-right: 48px;
+  width: 100%;
+}
+.user-password-toggle {
+  position: absolute;
+  right: 5px;
+  top: 4px;
+  display: grid;
+  place-items: center;
+  width: 35px;
+  height: 35px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.user-password-toggle:hover {
+  color: var(--link);
+  background: var(--surface-alt);
+}
+.user-password-toggle:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+.user-password-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.user-password-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.user-account-status {
+  width: fit-content;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.user-editor-dialog input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--link);
+  flex-shrink: 0;
+}
+.user-editor-dialog .workspace-identity {
+  padding: 12px 14px;
+  font-size: 12px;
+  border-radius: 10px;
+}
+.user-editor-dialog .workspace-identity p {
+  line-height: 1.5;
+}
+.user-permissions-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+}
+.user-permissions-heading > span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  white-space: nowrap;
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: var(--surface-alt);
+}
+.user-permission-presets button {
+  font-size: 12px;
+  border-radius: 8px;
+}
+.user-editor-dialog .permission-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.user-editor-dialog .permission-group {
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface);
+}
+.user-editor-dialog .permission-group h3 {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.user-editor-dialog .permission-group label {
+  padding: 7px 5px;
+  border-radius: 7px;
+  font-size: 12px;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.user-editor-dialog .permission-group label:hover {
+  background: var(--surface-alt);
+}
+.user-editor-dialog .permission-group input {
+  margin-top: 2px;
+}
+@media (max-width: 600px) {
+  .app-dialog.user-editor-dialog {
+    width: calc(100vw - 16px);
+    border-radius: 14px;
+  }
+  .user-editor-dialog .dialog-header,
+  .user-editor-dialog .dialog-body {
+    padding: 16px;
+  }
+  .user-editor-dialog .dialog-header h2 {
+    font-size: 18px;
+  }
+  .user-account-fields {
+    padding: 14px;
+    gap: 14px;
+  }
+  .user-editor-dialog .permission-grid {
+    grid-template-columns: 1fr;
+  }
+  .user-permissions-heading {
+    flex-wrap: wrap;
+  }
+}

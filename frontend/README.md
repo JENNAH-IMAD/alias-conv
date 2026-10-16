@@ -34,4 +34,4 @@ npm run test:e2e
 
 `npm start` lance la compilation de production existante.
 Voir [le README principal](../README.md) pour la base de données et le lancement de l’API.
-Voir [le guide d’export](../docs/conversion-export.md) pour l’import PDF, le contrat interne et les règles Sage X3.
+Voir [les conventions du projet](../docs/qualite-projet.md) pour l'organisation du code et les vérifications.
