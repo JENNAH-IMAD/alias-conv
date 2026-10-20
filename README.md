@@ -142,3 +142,4 @@ l'organisation du code, le nettoyage réalisé et les problèmes restant à trai
 Les commandes de compilation, de formatage, de vérification TypeScript et de lint
 restent disponibles. La vérification fonctionnelle s’effectue manuellement avec vos PDF.
 
+# alias-conv
