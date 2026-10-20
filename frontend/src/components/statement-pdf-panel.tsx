@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ChevronDown, FileText } from 'lucide-react';
 import { StatementPdfViewer } from './statement-pdf-viewer';
 import { Button } from './ui/button';
+import { StatementSourceText } from './statement-source-text';
 
 export function StatementPdfPanel({
   id,
@@ -21,7 +22,7 @@ export function StatementPdfPanel({
   onToggle?: () => void;
   extractId?: string;
 }) {
-  const [view, setView] = useState<'original' | 'converted'>('original');
+  const [view, setView] = useState<'original' | 'converted' | 'text'>('original');
   return (
     <aside
       className={`statement-pdf-panel ${collapsed ? 'pdf-collapsed' : ''}`}
@@ -59,8 +60,23 @@ export function StatementPdfPanel({
           >
             PDF converti
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={view === 'text' ? 'default' : 'outline'}
+            aria-pressed={view === 'text'}
+            onClick={() => setView('text')}
+          >
+            Texte source
+          </Button>
         </div>
-        {view === 'converted' && unsaved && (
+        {view === 'converted' && !extractId && (
+          <p className="pdf-view-note">
+            Transcription du relevé source : mêmes champs et valeurs lus, indépendamment du modèle
+            d’exportation. Les corrections des mouvements sont reprises dans le fichier exporté.
+          </p>
+        )}
+        {view === 'converted' && unsaved && extractId && (
           <p role="status" className="pdf-view-note">
             Enregistrez vos corrections pour actualiser le PDF converti. Cet aperçu reprend la
             dernière version enregistrée.
@@ -85,6 +101,7 @@ export function StatementPdfPanel({
             onSelection={() => {}}
           />
         )}
+        {view === 'text' && <StatementSourceText id={id} />}
       </div>
     </aside>
   );

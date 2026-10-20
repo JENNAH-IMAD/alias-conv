@@ -8,7 +8,7 @@ using PdfSharp.Pdf;
 namespace BankStatementConverter.Infrastructure.Exports;
 
 // Generated directly from the saved, reviewed statement data.
-public static class NormalizedStatementPdf
+public static partial class NormalizedStatementPdf
 {
     private sealed class FontResolver : IFontResolver
     {

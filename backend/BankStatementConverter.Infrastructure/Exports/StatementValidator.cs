@@ -9,8 +9,8 @@ public sealed class StatementValidator
         s = StatementAmounts.Normalize(s);
         var errors = new List<ExportError>();
         var warnings = new List<ExportError>();
-        if (s.Transactions is not { Count: > 0 and <= 50000 })
-            return new(false, [], [new("INVALID_TRANSACTIONS", "Le relevé doit contenir entre 1 et 50 000 transactions.")]);
+        if (s.Transactions is not { Count: > 0 })
+            return new(false, [], [new("INVALID_TRANSACTIONS", "Le relevé doit contenir au moins une transaction.")]);
         if (string.IsNullOrWhiteSpace(s.Currency) || s.Currency.Length != 3 || !s.Currency.All(char.IsAsciiLetterUpper))
             errors.Add(new("INVALID_CURRENCY", "La devise du relevé doit comporter trois lettres majuscules."));
         if (s.PeriodStart.HasValue && s.PeriodEnd.HasValue && s.PeriodStart > s.PeriodEnd)

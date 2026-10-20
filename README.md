@@ -46,6 +46,31 @@ powershell -ExecutionPolicy Bypass -File services/ocr/start.ps1
 
 Voir [l’installation OCR](services/ocr/README.md) sur un nouveau poste.
 
+Le mode **Automatique** lit d'abord le texte natif, puis utilise PaddleOCR uniquement
+sur les pages suspectes et OpenRouter gratuit pour les pages encore non résolues.
+Il conserve les données obtenues avec leurs alertes de contrôle. Une page illisible
+ou une omission détectée bloque la validation ; le PDF original reste disponible.
+Il n'y a plus de plafond applicatif par défaut de taille de PDF, de transactions,
+de pages ni de durée de conversion. Les anciennes valeurs `Storage:MaxBytes` ne
+limitent plus les imports PDF. La file OCR multiutilisateur reste active.
+
+Le PDF structuré des imports reprend la transcription et les champs du document
+source, dans leur disposition lorsqu'elle est disponible. Il conserve les valeurs
+imprimées, sans ajouter de colonnes, de soldes calculés ni de statut de validation.
+Les transcriptions sans coordonnées sont remises en page en conservant l'ordre
+des textes et les cellules des tableaux. Les corrections de mouvements et les
+formats du modèle s'appliquent au fichier d'export CSV/TXT ; les sélections filtrées
+sauvegardées disposent de leur propre rapport PDF de sélection.
+Démarrer `services/ocr/start.ps1` pour utiliser PaddleOCR local.
+
+La comparaison avec le projet de factures et les adaptations réalisées sont détaillées
+dans [l'analyse de la stratégie d'extraction](docs/analyse-strategie-factures-releves.md).
+
+OpenRouter est également disponible dans **Configuration OCR → Moteur de lecture**.
+Il transcrit les PDF page par page en conservant les colonnes et lignes dans un texte
+source, puis les modèles Sage/CSV existants préparent l'export. Voir
+[la configuration et les tests OpenRouter](services/openrouter/README.md).
+
 ```powershell
 dotnet run --project backend/BankStatementConverter.API --urls http://localhost:5081
 ```
@@ -83,9 +108,6 @@ renvoie des tableaux structurés, du Markdown et le JSON complet. L’onglet
 **Texte lu & adaptation** permet de les consulter, télécharger et adapter par numéro
 de colonne. Le mode local utilise le texte natif en priorité, puis l’OCR PP-OCRv6.
 Le parcours sépare la lecture, l’adaptation des champs bancaires et l’exportation.
-Les tests PDF historiques attendent un dossier de fixtures dont le nom commence par
-`relv` à la racine. Ce dossier est absent de cette copie ; les tests concernés échouent
-tant que leurs PDF ne sont pas restaurés.
 Le contrat JSON reste disponible dans l’API pour les intégrations techniques.
 Les contrats d'import et d'export sont dans `backend/BankStatementConverter.Application/Exports`.
 
@@ -93,19 +115,16 @@ Les contrats d'import et d'export sont dans `backend/BankStatementConverter.Appl
 
 ```powershell
 dotnet build BankStatementConverter.sln
-dotnet test backend/BankStatementConverter.Tests/BankStatementConverter.Tests.csproj
 cd frontend
 npm run typecheck
 npm run lint
 npm run build
-npm run test:e2e
 ```
 
-Le test d’intégration crée sa propre base temporaire `alias_export_test_<UUID>` et
-la supprime à la fin. Il utilise les identifiants de `TEST_DATABASE_URL` si cette
-variable est définie, sinon ceux du fichier local de développement. Le rôle PostgreSQL
-doit pouvoir créer des bases ; aucune écriture de test ne cible la base de travail.
-Pour ne lancer que les tests unitaires, ajouter `--filter 'Category!=Integration'`.
+Pour vérifier manuellement la conversion, ouvrir `http://localhost:3002/conversions`,
+importer votre PDF, choisir le modèle d’exportation et comparer chaque mouvement,
+libellé, débit et crédit au relevé original avant de télécharger le résultat.
+Les suites de tests automatisés et leurs réponses API simulées ont été retirées.
 Voir [le guide desktop](installer/GUIDE-DESKTOP.md) pour le lanceur Windows.
 
 ## Installation serveur Windows et Linux
@@ -120,8 +139,6 @@ et `scripts/Build-Linux-Package.ps1` (Docker Engine/Compose sous Linux).
 Voir [l'analyse et les conventions du projet](docs/qualite-projet.md) pour
 l'organisation du code, le nettoyage réalisé et les problèmes restant à traiter.
 
-La commande `powershell -ExecutionPolicy Bypass -File scripts/Test-Project.ps1`
-vérifie la compilation, le formatage, les types, le lint et les tests unitaires.
-Ajouter `-IncludeE2E` pour les tests navigateur ou `-IncludeIntegration` pour les
-tests nécessitant PostgreSQL. Les contrôles s'arrêtent au premier échec.
+Les commandes de compilation, de formatage, de vérification TypeScript et de lint
+restent disponibles. La vérification fonctionnelle s’effectue manuellement avec vos PDF.
 

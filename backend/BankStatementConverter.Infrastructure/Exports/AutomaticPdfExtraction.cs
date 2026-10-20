@@ -13,7 +13,7 @@ public sealed class AutomaticPdfExtraction(StatementPdfExtractor native, IPdfOcr
         progress?.Report("reading", 20, 0, document.Pages.Count);
         var nativePages = document.Pages;
         PdfStatementExtraction? nativeResult = null;
-        if (!string.Equals(config?["Ocr:PreferNativeText"], "false", StringComparison.OrdinalIgnoreCase) && document.Pages.All(p => p.Boxes.Count >= 10))
+        if (!ocr.RequiresProviderReading && !string.Equals(config?["Ocr:PreferNativeText"], "false", StringComparison.OrdinalIgnoreCase) && document.Pages.All(p => p.Boxes.Count >= 10 && !p.RequiresImageReading && !p.HasUnreliableText))
         {
             try
             {
@@ -79,7 +79,9 @@ public sealed class AutomaticPdfExtraction(StatementPdfExtractor native, IPdfOcr
             };
         }
         var uncertain = document.Pages.Sum(p => p.Boxes.Count(b => b.Confidence < 0.90));
-        var review = document.Method == "PADDLE_OCR_VL_1_6"
+        var review = document.Method == "OPENROUTER"
+            ? "Transcription OpenRouter : vérifiez chaque ligne, colonne, date, montant et solde avec le PDF original. Aucune confiance chiffrée ni exhaustivité financière n’est garantie."
+            : document.Method == "PADDLE_OCR_VL_1_6"
             ? "Lecture structurée PaddleOCR-VL-1.6 : vérifiez toutes les dates, montants et soldes avec le PDF original. Ce résultat ne fournit pas de score de confiance du texte."
             : $"Lecture PaddleOCR : vérifiez les dates, montants et soldes avec le PDF original. {uncertain} bloc(s) de texte ont une confiance inférieure à 90 %.";
         result = result with

@@ -3,10 +3,9 @@ using System.Text;
 using BankStatementConverter.Application;
 using BankStatementConverter.Domain;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 namespace BankStatementConverter.Infrastructure;
 
-public class DocumentService(AppDbContext db, IFileStorageService storage, IConfiguration config)
+public class DocumentService(AppDbContext db, IFileStorageService storage)
 {
     public static Expression<Func<Document, DocumentDto>> Projection => x => new(x.Id, x.ClientId, x.BankAccountId,
         x.Client.Name, x.BankAccount.Bank.Name, x.BankAccount.AccountName, x.BankAccount.AccountNumber, x.FileName, x.CreatedAt);
@@ -32,15 +31,13 @@ public class DocumentService(AppDbContext db, IFileStorageService storage, IConf
         {
             if (source != null)
             {
-                var limit = config.GetValue<long>("Storage:MaxBytes", 20 * 1024 * 1024);
-                Validation.Require(length > 0 && length <= limit && contentType == "application/pdf" &&
-                    string.Equals(Path.GetExtension(name), ".pdf", StringComparison.OrdinalIgnoreCase), "Choisissez un PDF de 20 Mo maximum.");
+                Validation.Require(length > 0 && contentType == "application/pdf" &&
+                    string.Equals(Path.GetExtension(name), ".pdf", StringComparison.OrdinalIgnoreCase), "Choisissez un fichier PDF non vide.");
                 using var buffer = new MemoryStream();
                 var chunk = new byte[81920];
                 int count;
                 while ((count = await source.ReadAsync(chunk, ct)) > 0)
                 {
-                    Validation.Require(buffer.Length + count <= limit, "PDF trop volumineux.");
                     await buffer.WriteAsync(chunk.AsMemory(0, count), ct);
                 }
                 Validation.Require(buffer.Length >= 5 && Encoding.ASCII.GetString(buffer.GetBuffer(), 0, 5) == "%PDF-", "Signature PDF invalide.");

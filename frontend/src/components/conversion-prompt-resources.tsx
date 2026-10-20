@@ -102,7 +102,7 @@ function PromptSwitcher({ initialType }: { initialType: DocumentType }) {
               ? 'Préparer un extrait avec ChatGPT'
               : 'Préparer un relevé avec ChatGPT'}
           </h2>
-          <p>Deux prompts dédiés, un même modèle PDF à cinq colonnes.</p>
+          <p>Deux prompts dédiés pour conserver les champs du document original.</p>
         </div>
         <span className="overview-icon teal">
           <FileText size={20} />
@@ -304,15 +304,9 @@ function PromptContent({ type, compact = false }: { type: DocumentType; compact?
       <div className="conversion-shared-model">
         <FileText size={20} aria-hidden="true" />
         <div>
-          <strong>Le même modèle pour les deux conversions</strong>
-          <p>Date opération · Date valeur · Libellé · Débit · Crédit</p>
+          <strong>Le relevé original définit la structure du PDF</strong>
+          <p>Mêmes champs, mêmes colonnes et mêmes valeurs que dans le document source.</p>
         </div>
-        <Button variant="outline" asChild>
-          <a href="/resources/modele-releve-alias.pdf" download>
-            <Download size={16} />
-            Modèle PDF · 5 colonnes
-          </a>
-        </Button>
         <Button variant="outline" asChild>
           <a href="/resources/Relever.ema" download>
             <Download size={16} />
@@ -340,7 +334,7 @@ function PromptContent({ type, compact = false }: { type: DocumentType; compact?
       )}
       <p role="status" className="overview-resources-status">
         {message ||
-          'Joignez votre document source et le modèle PDF dans ChatGPT, puis importez le PDF structuré dans Alias.'}
+          'Joignez votre relevé original dans ChatGPT, puis importez le PDF structuré dans Alias. Choisissez ensuite le modèle d’exportation pour le CSV/TXT.'}
       </p>
     </>
   );

@@ -36,9 +36,27 @@ internal static class StatementValueParser
         return label is "" or "-" or "—" or "–" or "NON DETERMINE" or "NON DETERMINEE" or "N/A" or "ND" or "N.D.";
     }
 
-    internal static decimal? Money(string text)
+    internal static decimal? Money(string text, string? currency = null)
     {
-        text = text.Trim();
+        text = text.Trim().Replace('\u2212', '-').Replace('\uFF0D', '-').Replace('\uFF0B', '+');
+        var accountingNegative = text.StartsWith('(') && text.EndsWith(')');
+        if (accountingNegative)
+            text = text[1..^1].Trim();
+        if (!string.IsNullOrWhiteSpace(currency))
+        {
+            // Only the selected currency is decoration; a foreign currency must remain unreadable.
+            var label = currency.ToUpperInvariant() switch
+            {
+                "MAD" => @"MAD|DHS?\.?|DIRHAMS?",
+                "EUR" => @"EUR|EUROS?|€",
+                "USD" => @"USD|US\$|\$",
+                "GBP" => @"GBP|£",
+                _ => Regex.Escape(currency)
+            };
+            text = Regex.Replace(text, $@"\s*(?:\(\s*(?:{label})\s*\)|(?:{label}))\s*$", "", RegexOptions.IgnoreCase, Timeout).Trim();
+            text = Regex.Replace(text, $@"^(?:\(\s*(?:{label})\s*\)|(?:{label}))\s*", "", RegexOptions.IgnoreCase, Timeout).Trim();
+        }
+        text = Regex.Replace(text, @"^([+-])\s+", "$1", RegexOptions.None, Timeout);
         // Spaces are thousands separators, not permission to concatenate neighboring cells.
         // In particular, a leaked date year ("2026 22460,90") must not become 202622460.90.
         if (Regex.IsMatch(text, @"\s", RegexOptions.None, Timeout))
@@ -63,8 +81,11 @@ internal static class StatementValueParser
                 return null;
             integer = string.Concat(groups);
         }
+        if (accountingNegative && match.Groups[1].Value.Length > 0)
+            return null; // Conflicting signs must not silently change direction.
         return decimal.TryParse(match.Groups[1].Value + integer + "." + match.Groups[4].Value,
-            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) ? value : null;
+            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value)
+            ? accountingNegative ? -value : value : null;
     }
 
     internal static DateOnly? Date(string text, DateOnly? start, DateOnly? end, DateOnly? reference = null)

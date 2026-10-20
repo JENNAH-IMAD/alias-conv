@@ -55,6 +55,17 @@ public sealed class OcrWorkQueue : IDisposable
 
 public sealed class QueuedPdfOcrClient(IPdfOcrClient client, OcrWorkQueue queue, IProcessingProgress progress) : IPdfOcrClient
 {
+    public bool RequiresProviderReading => client.RequiresProviderReading;
     public Task<PdfTextDocument> ExtractAsync(byte[] content, CancellationToken ct)
         => queue.ExtractAsync(client, content, progress, ct);
+    public Task<PdfTextDocument> ExtractPagesAsync(byte[] content, IReadOnlyList<int> pages, CancellationToken ct)
+        => queue.ExtractAsync(new SelectedPagesClient(client, pages), content, progress, ct);
+    public Task<PdfTextDocument> ExtractPagesWithContextAsync(byte[] content, IReadOnlyList<int> pages, PdfTextDocument context, CancellationToken ct)
+        => queue.ExtractAsync(new SelectedPagesClient(client, pages, context), content, progress, ct);
+
+    private sealed class SelectedPagesClient(IPdfOcrClient inner, IReadOnlyList<int> pages, PdfTextDocument? context = null) : IPdfOcrClient
+    {
+        public Task<PdfTextDocument> ExtractAsync(byte[] content, CancellationToken ct) => context == null
+            ? inner.ExtractPagesAsync(content, pages, ct) : inner.ExtractPagesWithContextAsync(content, pages, context, ct);
+    }
 }

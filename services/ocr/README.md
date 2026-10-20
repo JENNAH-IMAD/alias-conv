@@ -31,7 +31,7 @@ domaine de l’API pour cet usage. Les domaines HTTPS des résultats devront ég
 être accessibles après la lecture. Le client conserve la vérification des certificats ;
 il affiche une erreur HTTPS distincte des erreurs de fichier, de quota et de jeton.
 
-La configuration de PP-OCRv6 et ses tests simulés peuvent être validés localement.
+La configuration de PP-OCRv6 peut être vérifiée manuellement dans l’application locale.
 Le test réel complet reste impossible tant que ce blocage réseau persiste.
 
 Source : [API officielle PP-OCRv6](https://ai.baidu.com/ai-doc/AISTUDIO/7mfz6dgx9).
@@ -58,7 +58,7 @@ Ajouter cette section au fichier local `backend/BankStatementConverter.API/appse
 "Ocr": {
   "Provider": "AI_STUDIO",
   "CloudToken": "VOTRE_JETON_AI_STUDIO",
-  "TimeoutSeconds": 600
+  "TimeoutSeconds": 0
 }
 ```
 
@@ -100,21 +100,9 @@ Une erreur de jeton renvoie HTTP 503 avec une instruction de configuration, le q
 HTTP 429, une lecture incomplète HTTP 502 et un dépassement du délai HTTP 504.
 Le mode cloud ne bascule pas silencieusement vers le moteur local.
 
-Vérification réelle sur le relevé BMCE fictif fourni :
-
-```powershell
-dotnet run --project tools/OcrSmokeCheck -- output/paddle-vl-cloud-client.json "relvée/releve_bmce_exemple_01.pdf" --cloud
-```
-
-Le test soumet réellement le PDF puis compare les **36 mouvements**, dates, colonnes
-débit/crédit et les deux soldes au document de référence. Autre vérification compatible
-avec l’exemple Python fourni :
-
-```powershell
-python -m pip install requests
-python services/ocr/cloud_smoke_test.py
-dotnet run --project tools/OcrSmokeCheck -- output/paddle-vl-result.jsonl "relvée/releve_bmce_exemple_01.pdf" --vl
-```
+Pour vérifier le traitement réel, importer votre relevé depuis `/conversions`,
+sélectionner le fournisseur configuré puis comparer les mouvements, libellés,
+débits, crédits et soldes extraits au PDF original.
 
 Sources officielles : [API et SDK PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR/tree/main/api_sdk),
 [pipeline PaddleOCR-VL](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/pipeline_usage/PaddleOCR-VL.en.md),
@@ -122,7 +110,8 @@ Sources officielles : [API et SDK PaddleOCR](https://github.com/PaddlePaddle/Pad
 
 ## Moteur local PP-OCRv6
 
-Pour ce mode, choisir `Ocr:Provider=LOCAL`. Le texte natif est lu en priorité ;
+Pour ce mode, choisir `Ocr:Provider=AUTO` avec `Hybrid:AutoPaddleProvider=LOCAL`,
+ou `Ocr:Provider=LOCAL` pour ne pas utiliser l'assistance OpenRouter. Le texte natif est lu en priorité ;
 PaddleOCR local est utilisé pour les scans et les tableaux natifs non reconnus.
 
 Le service effectue seulement l’étape de lecture : **PDF → images → blocs de texte**.
@@ -157,18 +146,19 @@ ne transmettent pas les documents bancaires. Les fichiers ne sont pas écrits da
 le service ; le PDF original et l’extraction sont conservés par l’application.
 
 Lancer ensuite l’API et le frontend comme indiqué dans le README principal.
-L’API utilise `Ocr:BaseUrl=http://127.0.0.1:8091` et un délai de 600 secondes par
-défaut. Ces valeurs peuvent être remplacées par `Ocr__BaseUrl` et
+L’API utilise `Ocr:BaseUrl=http://127.0.0.1:8091` et `Ocr:TimeoutSeconds=0`
+par défaut (aucun délai maximal de conversion). Ces valeurs peuvent être remplacées par `Ocr__BaseUrl` et
 `Ocr__TimeoutSeconds`. Docker Compose lance aussi le service OCR.
 
 ## Contrat
 
-`POST /extract` attend un formulaire multipart avec `file` (PDF, 20 Mo maximum).
+`POST /extract` attend un formulaire multipart avec `file` (PDF, sans plafond de taille applicatif).
 Le résultat contient `method=PADDLE_OCR` et `pages[]` : numéro, largeur, hauteur,
 `boxes[]` avec texte, gauche/droite/haut/bas et confiance. Les coordonnées sont
 en points PDF, avec l’origine en haut à gauche ; aucun montant bancaire n’est
 calculé en Python. Les images sont limitées à 3 200 pixels par côté et les
-documents à 200 pages. Chaque processus protège son instance OCR par un verrou.
+documents n'ont plus de plafond de pages ni de taille PDF applicatif.
+Chaque processus protège son instance OCR par un verrou.
 Le lancement Windows et Docker utilise deux processus par défaut, pour permettre
 des lectures parallèles. `start.ps1 -Workers 1` réduit la consommation mémoire ;
 `OCR_CPU_THREADS` règle les threads par processus (deux par défaut). L'API possède
@@ -176,6 +166,19 @@ une file d'attente asynchrone et deux créneaux OCR configurables ; voir le
 [guide multi-utilisateur](../../docs/multi-user-conversions.md).
 Un fichier vide, corrompu ou protégé
 retourne une erreur explicite.
+
+`OCR_MODEL_SIZE=small` est le réglage CPU par défaut ; `tiny` et `medium` restent
+disponibles. La détection est plafonnée à 1 280 pixels sur le grand côté, réglable
+avec `OCR_DETECTION_MAX_SIDE` ; les recadrages de reconnaissance conservent la
+résolution du rendu PDF. Le point `/health` indique la taille du modèle chargé.
+Une police PDF mal encodée peut déclencher l'OCR même sans image raster dans le PDF.
+
+Le paramètre multipart facultatif `pages` sélectionne les numéros d'origine à lire.
+Chaque page réussie est conservée dix minutes dans un cache mémoire de 32 Mo par
+processus, indexé par les octets exacts du PDF et les réglages du moteur. Les documents
+différents ne partagent pas leurs valeurs. Les données OCR ne sont pas mises en cache
+sur disque. Une annulation de la connexion arrête les pages suivantes après la page
+en cours ; les pages déjà réussies peuvent être réutilisées lors d'une relance.
 
 ## Adaptation et limites
 
@@ -188,17 +191,9 @@ mises en page différentes, des scans très flous, inclinés ou écrits à la ma
 peuvent nécessiter une adaptation supplémentaire. L’application bloque toujours
 la validation d’un relevé sans mouvement ou comportant des montants ambigus.
 
-## Vérification réelle
+## Vérification manuelle
 
-```powershell
-.local/hybrid-runtime/Scripts/python.exe services/ocr/smoke_test.py
-dotnet run --project tools/OcrSmokeCheck -- output/ocr-scan-result.json "relvée/releve_credit_agricole_exemple_02.pdf"
-```
-
-Le script transforme un relevé synthétique de référence en PDF avec une couche
-image uniquement, exécute réellement PaddleOCR, puis compare les 22 mouvements,
-dates, débits/crédits et les soldes avec le document d’origine. Les descriptions
-doivent toujours être vérifiées après OCR. Les tests backend normaux utilisent
-un faux client OCR pour vérifier l’orchestration sans télécharger de modèles.
+Importer un PDF dans Alias avec le fournisseur OCR souhaité, puis comparer
+chaque page et chaque mouvement au document original avant export.
 
 Documentation officielle : [pipeline OCR PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR/blob/main/docs/version3.x/pipeline_usage/OCR.en.md).

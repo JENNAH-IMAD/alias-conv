@@ -1,5 +1,7 @@
 # Analyse et maintenance du projet Alias
 
+Note de mise à jour : les suites de tests automatisés et leurs configurations ont été retirées pour une vérification manuelle. Les bilans de tests ci-dessous sont historiques.
+
 Analyse du 16 octobre 2026, réalisée sur la copie de travail existante, avec ses
 modifications non validées dans Git. Les résultats ci-dessous concernent cette copie.
 
@@ -13,7 +15,6 @@ La séparation actuelle est adaptée au produit et mérite d'être conservée :
 | `backend/BankStatementConverter.Application` | Contrats, permissions et interfaces d'extraction/export |
 | `backend/BankStatementConverter.Infrastructure` | PostgreSQL, stockage, OCR, normalisation et génération des exports |
 | `backend/BankStatementConverter.API` | HTTP, authentification, autorisations et assemblage des services |
-| `backend/BankStatementConverter.Tests` | Tests unitaires, tests d'intégration et fichiers de référence |
 | `frontend/src/app` | Routes Next.js, layout et styles de base |
 | `frontend/src/components` | Composants de l'interface, dont les primitives dans `ui` |
 | `frontend/src/lib` | Fonctions réutilisables et logique d'édition côté navigateur |
@@ -138,5 +139,4 @@ API simulées. Ils ne valident pas une conversion bancaire réelle de bout en bo
   et les ressources chargées par chemin avant de supprimer un fichier.
 - Exclure les résultats générés des outils de qualité et garder les secrets/configurations
   propres au poste hors du dépôt.
-- Lancer `scripts/Test-Project.ps1` avant livraison ; utiliser `-IncludeIntegration`
-  et `-IncludeE2E` pour élargir les vérifications lorsque leur environnement est prêt.
+- Compiler la solution, contrôler les types TypeScript et vérifier manuellement les conversions avec des PDF réels avant livraison.

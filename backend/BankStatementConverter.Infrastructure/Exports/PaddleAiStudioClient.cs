@@ -10,6 +10,19 @@ namespace BankStatementConverter.Infrastructure.Exports;
 public sealed class PaddleAiStudioClient(HttpClient http, IConfiguration config, StatementPdfExtractor native, IProcessingProgress? reporter = null, OcrRuntimeSettings? settings = null) : IPdfOcrClient
 {
     private const string JobsUrl = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs";
+    public async Task<PdfTextDocument> ExtractPagesAsync(byte[] content, IReadOnlyList<int> pages, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var selection = PdfPageSelection.Create(content, pages);
+        var reading = await ExtractAsync(selection.Content, ct);
+        if (reading.Pages.Count != pages.Count)
+            throw new AppException(502, "PaddleOCR n’a pas retourné toutes les pages demandées.");
+        return reading with
+        {
+            Pages = reading.Pages.Select((page, index) => page with { Number = pages[index] }).ToArray(),
+            SourcePageCount = selection.Total
+        };
+    }
     public async Task<PdfTextDocument> ExtractAsync(byte[] content, CancellationToken ct)
     {
         var source = native.ReadDocument(content, ct);
@@ -20,7 +33,7 @@ public sealed class PaddleAiStudioClient(HttpClient http, IConfiguration config,
         if (string.IsNullOrWhiteSpace(token))
             throw new AppException(503, "Configurez Ocr:CloudToken côté serveur pour utiliser PaddleOCR.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        deadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(config.GetValue("Ocr:TimeoutSeconds", 600), 1, 600)));
+        ExtractionTimeout.Apply(deadline, config, "Ocr:TimeoutSeconds");
         var cancellation = deadline.Token;
         try
         {

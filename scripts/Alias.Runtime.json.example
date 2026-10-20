@@ -1,6 +1,6 @@
 {
   "ConnectionStrings": { "Default": "Host=127.0.0.1;Port=5432;Database=alias;Username=alias;Password=REMPLACER" },
-  "Storage": { "Root": "../data/uploads", "MaxBytes": 20971520 },
+  "Storage": { "Root": "../data/uploads" },
   "Database": { "AutoMigrate": true },
   "Seed": { "DemoData": false },
   "AllowedHosts": "localhost;127.0.0.1",

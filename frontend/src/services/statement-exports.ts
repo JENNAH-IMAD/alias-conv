@@ -83,6 +83,12 @@ export type StatementDetail = {
     pageCount: number;
     lowConfidenceCount: number;
     needsMapping: boolean;
+    performance?: {
+      durationMs: number;
+      nativePages: number;
+      paddlePages: number;
+      aiPages: number;
+    } | null;
   } | null;
   sourceFileName?: string | null;
   id: string;

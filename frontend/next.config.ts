@@ -4,7 +4,7 @@ import { networkInterfaces } from 'node:os';
 const nextConfig: NextConfig = {
   output: 'standalone',
   // Allow 10 minutes of queueing + 10 minutes of OCR, with time to save the result.
-  experimental: { proxyTimeout: 1_260_000, proxyClientMaxBodySize: '21mb' },
+  experimental: { proxyTimeout: 1_260_000, proxyClientMaxBodySize: Number.MAX_SAFE_INTEGER },
   allowedDevOrigins: Object.values(networkInterfaces())
     .flatMap((addresses) => addresses ?? [])
     .filter((address) => address.family === 'IPv4' && !address.internal)

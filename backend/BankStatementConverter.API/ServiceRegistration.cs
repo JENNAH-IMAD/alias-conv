@@ -32,9 +32,8 @@ internal static class ServiceRegistration
             .AllowCredentials()
             .WithExposedHeaders("Content-Disposition")));
 
-        var maxBytes = builder.Configuration.GetValue<long>("Storage:MaxBytes", 20 * 1024 * 1024);
-        builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = maxBytes + 1024 * 1024);
-        builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = maxBytes + 1024 * 1024);
+        builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = null);
+        builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = long.MaxValue);
         AddCatalogServices(builder);
         AddConversionServices(builder);
     }
@@ -99,25 +98,44 @@ internal static class ServiceRegistration
         builder.Services.AddSingleton<IStatementPdfExtractor>(s => s.GetRequiredService<StatementPdfExtractor>());
         builder.Services.AddSingleton<OcrSettingsStore>();
         builder.Services.AddSingleton<OcrWorkQueue>();
+        builder.Services.AddSingleton<OpenRouterPageCache>();
         // Les clients OCR gèrent leur délai ; les URL distantes peuvent contenir des jetons.
         builder.Services.AddHttpClient("paddle-cloud", http => http.Timeout = Timeout.InfiniteTimeSpan).RemoveAllLoggers();
         builder.Services.AddHttpClient("paddle-local", http => http.Timeout = Timeout.InfiniteTimeSpan).RemoveAllLoggers();
+        builder.Services.AddHttpClient("openrouter", http => http.Timeout = Timeout.InfiniteTimeSpan).RemoveAllLoggers();
         builder.Services.AddScoped<IPdfOcrClient>(s =>
         {
             var settings = s.GetRequiredService<OcrSettingsStore>().Snapshot;
             var clients = s.GetRequiredService<IHttpClientFactory>();
             IPdfOcrClient client = settings.Provider switch
             {
+                "OPENROUTER" => new OpenRouterPdfClient(
+                    clients.CreateClient("openrouter"), builder.Configuration,
+                    s.GetRequiredService<StatementPdfExtractor>(), s.GetRequiredService<IProcessingProgress>(), settings, s.GetRequiredService<OpenRouterPageCache>()),
                 "AI_STUDIO" => new PaddleAiStudioClient(
                     clients.CreateClient("paddle-cloud"), builder.Configuration,
                     s.GetRequiredService<StatementPdfExtractor>(), s.GetRequiredService<IProcessingProgress>(), settings),
                 "LOCAL" => new PaddleOcrClient(
                     clients.CreateClient("paddle-local"), builder.Configuration, settings),
-                _ => throw new InvalidOperationException("Ocr:Provider doit être LOCAL ou AI_STUDIO.")
+                "AUTO" => settings.AutoPaddleProvider == "AI_STUDIO"
+                    ? new PaddleAiStudioClient(clients.CreateClient("paddle-cloud"), builder.Configuration, s.GetRequiredService<StatementPdfExtractor>(), s.GetRequiredService<IProcessingProgress>(), settings)
+                    : new PaddleOcrClient(clients.CreateClient("paddle-local"), builder.Configuration, settings),
+                _ => throw new InvalidOperationException("Ocr:Provider doit être AUTO, LOCAL, AI_STUDIO ou OPENROUTER.")
             };
             return new QueuedPdfOcrClient(client, s.GetRequiredService<OcrWorkQueue>(), s.GetRequiredService<IProcessingProgress>());
         });
-        builder.Services.AddScoped<IAutomaticPdfExtraction, AutomaticPdfExtraction>();
+        builder.Services.AddScoped<IAutomaticPdfExtraction>(services =>
+        {
+            var settings = services.GetRequiredService<OcrSettingsStore>().Snapshot;
+            var native = services.GetRequiredService<StatementPdfExtractor>();
+            var progress = services.GetRequiredService<IProcessingProgress>();
+            if (settings.Provider != "AUTO")
+                return new AutomaticPdfExtraction(native, services.GetRequiredService<IPdfOcrClient>(), builder.Configuration, progress);
+            IPdfOcrClient? ai = string.IsNullOrWhiteSpace(settings.OpenRouterToken) ? null : new QueuedPdfOcrClient(
+                new OpenRouterPdfClient(services.GetRequiredService<IHttpClientFactory>().CreateClient("openrouter"), builder.Configuration,
+                    native, progress, settings, services.GetRequiredService<OpenRouterPageCache>()), services.GetRequiredService<OcrWorkQueue>(), progress);
+            return new HybridPdfExtraction(native, services.GetRequiredService<IPdfOcrClient>(), ai, builder.Configuration, progress);
+        });
         builder.Services.AddScoped<PdfStatementImportService>();
     }
 }

@@ -11,7 +11,7 @@ namespace BankStatementConverter.Infrastructure.Exports;
 public sealed class StatementImportService(AppDbContext db, StatementValidator validator, IExportEngine engine, IFileStorageService storage, IHttpContextAccessor? http = null)
 {
     private string Actor => http?.HttpContext?.User.Identity?.Name ?? WorkspaceIdentity.Name;
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { NumberHandling = JsonNumberHandling.AllowReadingFromString };
+    public static readonly JsonSerializerOptions Json = StatementJson.CreateOptions();
     public async Task<PageResult<StatementSummary>> ListAsync(int page, int pageSize, CancellationToken ct)
     {
         Validation.Require(page >= 1 && pageSize is >= 1 and <= 100, "Pagination invalide.");
@@ -30,14 +30,15 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
         var diagnostics = validator.Validate(statement);
         var importWarnings = record.ImportDiagnosticsJson == null ? [] : JsonSerializer.Deserialize<List<ExportError>>(record.ImportDiagnosticsJson, Json)!;
         var raw = record.RawExtractionJson == null ? null : JsonSerializer.Deserialize<PdfTextDocument>(record.RawExtractionJson, Json);
-        var extraction = raw == null ? null : new ExtractionSummary(raw.Method, raw.Pages.Count, raw.Pages.Sum(p => p.Boxes.Count(b => b.Confidence < 0.90)), statement.Transactions.Count == 0);
-        return new(record.Id, record.Status, record.Version, record.ValidatedAt, statement, diagnostics.Warnings.Concat(importWarnings).ToList(), diagnostics.Errors, record.SourceFileName, extraction, record.ClientId, record.BankAccountId, record.ImportedByName, record.ModifiedByName);
+        var extraction = raw == null ? null : new ExtractionSummary(raw.Method, raw.Pages.Count, raw.Pages.Sum(p => p.Boxes.Count(b => b.Confidence < 0.90)), statement.Transactions.Count == 0, raw.Performance);
+        var coverageErrors = raw?.Method == "HYBRID" ? ExtractionAudit.Errors(statement, raw) : [];
+        return new(record.Id, record.Status, record.Version, record.ValidatedAt, statement, diagnostics.Warnings.Concat(importWarnings).ToList(), diagnostics.Errors.Concat(coverageErrors).ToArray(), record.SourceFileName, extraction, record.ClientId, record.BankAccountId, record.ImportedByName, record.ModifiedByName);
     }
     private static void CheckInput(BankStatement s, bool allowEmpty = false)
     {
         Validation.Require(s.ConversionType is "STATEMENT" or "EXTRACT", "Type de conversion invalide.");
         Validation.Text(s.BankName, "Nom de la banque");
-        Validation.Require(s.Transactions != null && s.Transactions.Count >= (allowEmpty ? 0 : 1) && s.Transactions.Count <= 50000 && s.Transactions.All(t => t != null), "Importez entre 1 et 50 000 transactions non vides.");
+        Validation.Require(s.Transactions != null && s.Transactions.Count >= (allowEmpty ? 0 : 1) && s.Transactions.All(t => t != null), "Importez des transactions non vides.");
         foreach (var property in typeof(BankStatement).GetProperties().Where(p => p.PropertyType == typeof(string)))
             Validation.Require(((string?)property.GetValue(s))?.Length is null or <= 2000, "Métadonnée du relevé trop longue.");
         foreach (var transaction in s.Transactions!)
@@ -112,7 +113,6 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
             int read;
             while ((read = await original.ReadAsync(buffer, ct)) > 0)
             {
-                Validation.Require(content.Length + read <= 20 * 1024 * 1024, "Le PDF original dépasse la taille maximale.");
                 await content.WriteAsync(buffer.AsMemory(0, read), ct);
             }
             var native = normalizer.ReadDocument(content.ToArray(), ct);

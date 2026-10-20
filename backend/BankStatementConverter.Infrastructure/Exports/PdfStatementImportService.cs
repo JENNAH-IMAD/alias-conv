@@ -2,17 +2,15 @@ using System.Text;
 using BankStatementConverter.Application;
 using BankStatementConverter.Application.Exports;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 
 namespace BankStatementConverter.Infrastructure.Exports;
 
-public sealed class PdfStatementImportService(AppDbContext db, IFileStorageService storage, IAutomaticPdfExtraction extractor, StatementImportService imports, IConfiguration config, IProcessingProgress? progress = null)
+public sealed class PdfStatementImportService(AppDbContext db, IFileStorageService storage, IAutomaticPdfExtraction extractor, StatementImportService imports, IProcessingProgress? progress = null)
 {
     public async Task<StatementDetail> ImportAsync(Stream source, string fileName, long length, Guid bankId, string currency, CancellationToken ct, Guid? clientId = null, Guid? bankAccountId = null, string conversionType = "STATEMENT")
     {
         Validation.Require(conversionType is "STATEMENT" or "EXTRACT", "Type de conversion invalide.");
-        var limit = config.GetValue<long>("Storage:MaxBytes", 20 * 1024 * 1024);
-        Validation.Require(length > 0 && length <= limit && string.Equals(Path.GetExtension(fileName), ".pdf", StringComparison.OrdinalIgnoreCase), "Choisissez un PDF de 20 Mo maximum.");
+        Validation.Require(length > 0 && string.Equals(Path.GetExtension(fileName), ".pdf", StringComparison.OrdinalIgnoreCase), "Choisissez un fichier PDF non vide.");
         Validation.Text(Path.GetFileName(fileName.Replace('\\', '/')), "Nom du fichier", 2000);
         Validation.Require(currency.Length == 3 && currency.All(char.IsAsciiLetterUpper), "La devise doit comporter trois lettres majuscules.");
         var bank = await db.Banks.AsNoTracking().SingleOrDefaultAsync(b => b.Id == bankId, ct) ?? throw new AppException(400, "Choisissez la banque du relevé.");
@@ -24,7 +22,6 @@ public sealed class PdfStatementImportService(AppDbContext db, IFileStorageServi
         int count;
         while ((count = await source.ReadAsync(chunk, ct)) > 0)
         {
-            Validation.Require(buffer.Length + count <= limit, "PDF trop volumineux.");
             await buffer.WriteAsync(chunk.AsMemory(0, count), ct);
         }
         Validation.Require(buffer.Length >= 5 && Encoding.ASCII.GetString(buffer.GetBuffer(), 0, 5) == "%PDF-", "Signature PDF invalide.");

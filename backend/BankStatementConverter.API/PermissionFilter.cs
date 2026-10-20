@@ -53,9 +53,9 @@ public sealed class PermissionFilter : IAsyncAuthorizationFilter
         }
         if (action.ControllerName == "StatementExports")
             operation = action.ActionName == "Download" || action.ActionName == "ArchivedDownload" ? "export" : "read";
-        if (action.ControllerName == "StatementImports" && action.ActionName is "StandardDownload" or "CompleteDownload" or "NormalizedPdf" or "ConversionReport" or "DownloadExtract")
+        if (action.ControllerName == "StatementImports" && action.ActionName is "StandardDownload" or "CompleteDownload" or "NormalizedPdf" or "ConversionReport" or "DownloadExtract" or "SourceText")
             operation = "export";
-        if (action.ControllerName == "StatementImports" && action.ActionName == "NormalizedPdf" && bool.TryParse(context.HttpContext.Request.Query["preview"], out var preview) && preview)
+        if (action.ControllerName == "StatementImports" && action.ActionName is "NormalizedPdf" or "SourceText" && bool.TryParse(context.HttpContext.Request.Query["preview"], out var preview) && preview)
             operation = "read";
         if (action.ActionName == "Original" && bool.TryParse(context.HttpContext.Request.Query["download"], out var download) && download)
             operation = "export";

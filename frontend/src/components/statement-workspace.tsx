@@ -324,8 +324,7 @@ export function StatementWorkspace({
     return true;
   }
   function insertRow(position: number) {
-    if (busy || pendingCells.size || !can('documents.write') || draft.transactions.length >= 50000)
-      return;
+    if (busy || pendingCells.size || !can('documents.write')) return;
     if (!Number.isInteger(position) || position < 1 || position > draft.transactions.length + 1) {
       setError(`Choisissez une position entre 1 et ${draft.transactions.length + 1}.`);
       return;
@@ -391,7 +390,7 @@ export function StatementWorkspace({
         <button
           type="button"
           className="row-insert-button"
-          disabled={disabled || draft.transactions.length >= 50000}
+          disabled={disabled}
           aria-label={`Insérer une ligne avant la ligne ${row.sequence}`}
           title="Insérer une ligne ici"
           onClick={() => insertRow(draft.transactions.indexOf(row) + 1)}
@@ -441,7 +440,7 @@ export function StatementWorkspace({
         <Button
           variant="outline"
           size="sm"
-          disabled={!!busy || pendingCells.size > 0 || draft.transactions.length >= 50000}
+          disabled={!!busy || pendingCells.size > 0}
           onClick={() => insertRow(Number(insertPosition))}
         >
           <Plus size={15} />
@@ -1215,9 +1214,7 @@ export function StatementWorkspace({
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={
-                          !!busy || pendingCells.size > 0 || draft.transactions.length >= 50000
-                        }
+                        disabled={!!busy || pendingCells.size > 0}
                         onClick={() => insertRow(draft.transactions.length + 1)}
                       >
                         <Plus size={15} />
@@ -1618,7 +1615,7 @@ export function StatementWorkspace({
                         disabled={!!busy || dirty || pendingCells.size > 0}
                         onClick={() => void downloadStructured()}
                       >
-                        <Download size={16} /> PDF structuré · 5 colonnes
+                        <Download size={16} /> PDF structuré
                       </Button>
                       <Button
                         permission="documents.export"
@@ -1655,11 +1652,7 @@ export function StatementWorkspace({
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={
-                                !!busy ||
-                                pendingCells.size > 0 ||
-                                draft.transactions.length >= 50000
-                              }
+                              disabled={!!busy || pendingCells.size > 0}
                               onClick={() => insertRow(draft.transactions.length + 1)}
                             >
                               <Plus size={15} />

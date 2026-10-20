@@ -106,7 +106,10 @@ public sealed class StatementImportsController(StatementImportService service, P
         Response.Headers.CacheControl = "no-store";
         if (detail.Version != version)
             throw new AppException(409, "Le relevé a été modifié. Actualisez l’aperçu avant de télécharger le PDF.");
-        var content = NormalizedStatementPdf.Generate(StatementExtracts.ForExport(detail.Statement, extractId), detail.Status == "VALIDATED");
+        // Saved filtered selections remain a banking report; full PDFs retain the source fields.
+        var content = extractId.HasValue || detail.Extraction == null
+            ? NormalizedStatementPdf.Generate(StatementExtracts.ForExport(detail.Statement, extractId), detail.Status == "VALIDATED")
+            : NormalizedStatementPdf.GenerateSource(await service.ExtractionAsync(id, ct));
         return preview ? File(content, "application/pdf") : File(content, "application/pdf", $"{(extractId.HasValue ? "extrait" : "releve")}_{id:N}_structure.pdf");
     }
     [HttpGet("{id:guid}/conversion-report")]
@@ -146,6 +149,19 @@ public sealed class StatementImportsController(StatementImportService service, P
     {
         Response.Headers.CacheControl = "no-store";
         return await service.ExtractionAsync(id, ct);
+    }
+    [HttpGet("{id:guid}/source-text")]
+    public async Task<IActionResult> SourceText(Guid id, CancellationToken ct, [FromQuery] bool preview = false)
+    {
+        var document = await service.ExtractionAsync(id, ct);
+        Response.Headers.CacheControl = "no-store";
+        var text = SourceStatementText.Generate(document);
+        return preview ? Ok(new
+        {
+            text,
+            document.Method
+        })
+            : File(System.Text.Encoding.UTF8.GetBytes(text), "text/plain; charset=utf-8", $"releve_{id:N}_source.txt");
     }
     [HttpPost("{id:guid}/adapt")]
     public Task<StatementDetail> Adapt(Guid id, AdaptExtractionRequest request, [FromServices] StatementPdfExtractor normalizer, CancellationToken ct)

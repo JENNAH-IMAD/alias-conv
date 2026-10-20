@@ -120,7 +120,7 @@ public static class StructuredStatementNormalizer
                     var creditText = Cell(columns.Credit);
                     decimal? CellMoney(string amount)
                     {
-                        var parsed = Money(amount);
+                        var parsed = StatementValueParser.Money(amount, currency);
                         if (parsed.HasValue || !Regex.IsMatch(amount, @"^[+-]?\d{1,3}(?:,\d{3})+,\d{2}$", RegexOptions.None, Timeout))
                             return parsed;
                         var lastComma = amount.LastIndexOf(',');
@@ -161,13 +161,12 @@ public static class StructuredStatementNormalizer
                         if (transactions.Count > 0 && !string.IsNullOrWhiteSpace(label))
                             transactions[^1] = transactions[^1] with
                             {
-                                Description = transactions[^1].Description + "\n" + label
+                                Description = transactions[^1].Description + "\n" + label,
+                                SourcePages = (transactions[^1].SourcePages ?? []).Append(page.Number).Distinct().ToArray()
                             };
                         continue;
                     }
                     var sequence = transactions.Count + 1;
-                    if (sequence > 50000)
-                        throw new AppException(422, "Ce relevé contient trop de mouvements.");
                     (opDate, valueDate) = StatementValueParser.CompleteDates(opDate, valueDate, Cell(columns.Date), Cell(columns.ValueDate), warnings);
                     if (!opDate.HasValue || (!string.IsNullOrWhiteSpace(Cell(columns.ValueDate)) && !valueDate.HasValue))
                         warnings.Add(new("PDF_DATE_UNREADABLE", "Date non reconnue dans une cellule du tableau. Corrigez-la avec l’original.", sequence, SourceField: "Date"));
@@ -178,6 +177,7 @@ public static class StructuredStatementNormalizer
                     transactions.Add(new()
                     {
                         Sequence = sequence,
+                        SourcePages = [page.Number],
                         Date = opDate,
                         ValueDate = valueDate,
                         Description = label,

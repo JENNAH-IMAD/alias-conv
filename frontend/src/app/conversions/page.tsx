@@ -243,7 +243,7 @@ function ConversionStudio() {
                       <Plus size={17} />
                       Importer un extrait
                     </Button>
-                    <span>Relevés et extraits PDF · jusqu’à 20 Mo</span>
+                    <span>Relevés et extraits PDF</span>
                   </div>
                   <div className="conversion-empty-features">
                     <span>

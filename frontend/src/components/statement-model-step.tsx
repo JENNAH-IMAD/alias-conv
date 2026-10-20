@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ArrowRight, FileCheck2, FileOutput, LoaderCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { ConversionSteps } from './conversion-steps';
+import { StatementSourceText } from './statement-source-text';
 import { ExportTemplate, request } from '@/services/api';
 import { reuseValidatedAdaptation } from '@/services/statement-adaptation';
 import type { StatementDetail, PreparedStatementExport } from '@/services/statement-exports';
@@ -35,6 +36,7 @@ export function StatementModelStep({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
   const [sourceDetail, setSourceDetail] = useState(detail);
+  const [showSource, setShowSource] = useState(false);
   const model = templates.find((item) => item.id === templateId && item.isActive);
   async function prepare() {
     if (!model || busy) return;
@@ -79,6 +81,29 @@ export function StatementModelStep({
   return (
     <section className="ui-card conversion-model-step" aria-label="Choix du modèle d’exportation">
       <ConversionSteps current={2} onNavigate={() => onImport?.()} disabled={busy} />
+      {detail.extraction?.performance && (
+        <p role="status" className="muted text-sm">
+          Lecture en{' '}
+          {(detail.extraction.performance.durationMs / 1000).toLocaleString('fr-FR', {
+            maximumFractionDigits: 1,
+          })}{' '}
+          s · {detail.extraction.performance.nativePages} page(s) locales ·{' '}
+          {detail.extraction.performance.paddlePages} PaddleOCR ·{' '}
+          {detail.extraction.performance.aiPages} avec assistance IA. Les données restent à vérifier
+          avant validation.
+        </p>
+      )}
+      {['OPENROUTER', 'HYBRID'].includes(detail.extraction?.method ?? '') && (
+        <details
+          className="rounded-xl border p-3"
+          onToggle={(event) => setShowSource(event.currentTarget.open)}
+        >
+          <summary className="cursor-pointer font-semibold">
+            1. Consulter la transcription du relevé
+          </summary>
+          {showSource && <StatementSourceText id={detail.id} />}
+        </details>
+      )}
       <div className="model-step-heading">
         <span className="model-step-icon">
           <FileOutput size={26} />
@@ -158,7 +183,9 @@ export function StatementModelStep({
           </ul>
           <p>
             Les champs marqués * sont obligatoires. Les valeurs absentes du PDF seront signalées
-            dans le résultat.
+            dans le résultat. Le modèle définit les colonnes et les formats du fichier ; les données
+            sont récupérées dans le relevé bancaire. Le PDF structuré conserve les champs du
+            document source.
           </p>
         </div>
       )}

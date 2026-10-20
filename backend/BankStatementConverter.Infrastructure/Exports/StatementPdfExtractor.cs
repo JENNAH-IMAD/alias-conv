@@ -10,7 +10,7 @@ using UglyToad.PdfPig.DocumentLayoutAnalysis.WordExtractor;
 namespace BankStatementConverter.Infrastructure.Exports;
 
 // Stage 2 is independent of how stage 1 obtained its text boxes (native PDF or OCR).
-public sealed class StatementPdfExtractor : IStatementPdfExtractor
+public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
 {
     private sealed record Token(string Text, double Left, double Right, double Y);
     private sealed record Line(double Y, IReadOnlyList<Token> Words)
@@ -25,6 +25,31 @@ public sealed class StatementPdfExtractor : IStatementPdfExtractor
         public double MoneySplit => Credit.Left - 6;
     }
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+    private static readonly string[] MoneyCurrencies = ["MAD", "EUR", "USD", "GBP", "CHF"];
+    private static IEnumerable<Token> PageTokens(PdfTextPage page, bool native)
+    {
+        foreach (var box in page.Boxes)
+        {
+            var y = page.Height - (native ? box.Bottom : (box.Top + box.Bottom) / 2);
+            if (box.Text.IndexOfAny([',', '.']) >= 0 && box.Text.Any(char.IsDigit)
+                && MoneyCurrencies.Any(currency => StatementValueParser.Money(box.Text, currency).HasValue))
+            {
+                yield return new(box.Text.Trim(), box.Left, box.Right, y);
+                continue;
+            }
+            // OCR boxes can contain the whole narrative. Dividing their width by character
+            // positions used to leave only (**), with the rest outside the guessed cell.
+            if (Regex.IsMatch(box.Text, @"\p{L}", RegexOptions.None, RegexTimeout)
+                && !Regex.IsMatch(box.Text, @"^\s*[+\-−(]?\s*\d", RegexOptions.None, RegexTimeout))
+            {
+                yield return new(box.Text.Trim(), box.Left, box.Right, y);
+                continue;
+            }
+            foreach (Match word in Regex.Matches(box.Text, @"\S+", RegexOptions.None, RegexTimeout))
+                yield return new(word.Value, box.Left + (box.Right - box.Left) * word.Index / box.Text.Length,
+                    box.Left + (box.Right - box.Left) * (word.Index + word.Length) / box.Text.Length, y);
+        }
+    }
     private const string FullDate = @"\d{2}(?:[/.-]|[ \t]+)\d{2}(?:[/.-]|[ \t]+)\d{4}";
     private static string Fold(string text) => new(text.Normalize(NormalizationForm.FormD)
         .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).Select(char.ToUpperInvariant).ToArray());
@@ -136,7 +161,7 @@ public sealed class StatementPdfExtractor : IStatementPdfExtractor
         try
         {
             using var pdf = PdfDocument.Open(content);
-            Validation.Require(pdf.NumberOfPages is > 0 and <= 200, "Le relevé doit contenir entre 1 et 200 pages.");
+            Validation.Require(pdf.NumberOfPages > 0, "Le relevé doit contenir au moins une page.");
             var result = new List<PdfTextPage>();
             foreach (var page in pdf.GetPages())
             {
@@ -144,7 +169,17 @@ public sealed class StatementPdfExtractor : IStatementPdfExtractor
                 var words = page.GetWords(NearestNeighbourWordExtractor.Instance).Select(w => new PdfTextBox(w.Text, w.BoundingBox.Left, w.BoundingBox.Right,
                     page.Height - w.BoundingBox.Top, page.Height - w.BoundingBox.Bottom)).ToList();
                 Validation.Require(words.Count <= 100000 && result.Sum(p => p.Boxes.Count) + words.Count <= 500000, "Ce PDF contient trop de texte pour être traité.");
-                result.Add(new(page.Number, page.Width, page.Height, words));
+                // Some statements put selectable headings beside scanned movement tables.
+                // Text alone cannot establish that these image areas were read. Ignore small logos.
+                var imageArea = page.GetImages().Select(image => image.BoundingBox).Select(bounds =>
+                {
+                    var width = Math.Max(0, Math.Min(page.Width, bounds.Right) - Math.Max(0, bounds.Left));
+                    var height = Math.Max(0, Math.Min(page.Height, bounds.Top) - Math.Max(0, bounds.Bottom));
+                    return width >= page.Width * 0.2 && height >= page.Height * 0.03 ? width * height : 0;
+                }).Sum();
+                result.Add(new(page.Number, page.Width, page.Height, words,
+                    RequiresImageReading: imageArea >= page.Width * page.Height * 0.03,
+                    HasUnreliableText: words.Any(word => word.Text.IndexOfAny(['\0', '\uFFFD']) >= 0)));
             }
             return new("NATIVE_PDF", result);
         }
@@ -160,9 +195,14 @@ public sealed class StatementPdfExtractor : IStatementPdfExtractor
             var pageText = string.Join("\n", Lines(page.Boxes.Select(b => new Token(b.Text, b.Left, b.Right, page.Height - (b.Top + b.Bottom) / 2))).Select(l => l.Text));
             foreach (Match folio in Regex.Matches(Fold(pageText), @"\bPAGE\s+(\d{1,3})\s*(?:/|SUR|OF)\s*(\d{1,3})\b", RegexOptions.None, RegexTimeout))
                 if (int.Parse(folio.Groups[1].Value, CultureInfo.InvariantCulture) != page.Number
-                    || int.Parse(folio.Groups[2].Value, CultureInfo.InvariantCulture) != document.Pages.Count)
+                    || int.Parse(folio.Groups[2].Value, CultureInfo.InvariantCulture) != (document.SourcePageCount ?? document.Pages.Count))
                     throw new AppException(422, "Le relevé est incomplet ou ses pages sont désordonnées. Vérifiez les numéros de page du PDF original.");
         }
+        // OpenRouter returns transcribed cells, not OCR positions. Never infer geometry from its text containers.
+        if (document.Method == "HYBRID")
+            return HybridStatementNormalizer.Normalize(this, document, bankName, bankCode, currency, ct, metadata);
+        if (document.Method == "OPENROUTER")
+            return StructuredStatementNormalizer.Normalize(document, bankName, bankCode, currency, ct, mapping?.TableColumns, metadata);
         if (mapping == null && BmceNativeStatementNormalizer.TryNormalize(document, bankName, bankCode, currency, ct) is { } bmce)
             return PdfStatementMetadata.Complete(bmce, metadata);
         if (document.Pages.Any(p => p.Tables is { Count: > 0 }) && (mapping == null || mapping.TableColumns != null))
@@ -218,10 +258,7 @@ public sealed class StatementPdfExtractor : IStatementPdfExtractor
         foreach (var page in document.Pages)
         {
             ct.ThrowIfCancellationRequested();
-            var words = page.Boxes.SelectMany(box => Regex.Matches(box.Text, @"\S+", RegexOptions.None, RegexTimeout)
-                .Select(m => new Token(m.Value, box.Left + (box.Right - box.Left) * m.Index / box.Text.Length,
-                    box.Left + (box.Right - box.Left) * (m.Index + m.Length) / box.Text.Length,
-                    page.Height - (document.Method == "NATIVE_PDF" ? box.Bottom : (box.Top + box.Bottom) / 2)))).ToList();
+            var words = PageTokens(page, document.Method == "NATIVE_PDF").ToList();
             pages.Add(words);
             allLines.AddRange(Lines(words));
         }
@@ -367,7 +404,14 @@ public sealed class StatementPdfExtractor : IStatementPdfExtractor
                 List<Token> referenceWords = [];
                 if (header.Reference != null)
                 {
-                    referenceWords = anchor.Words.Where(w => w.Left >= header.Reference.Left - 12 && w.Left < header.Reference.Left + 42 && w.Left >= descriptionStart).ToList();
+                    // A centered description caption can sit far to the right of its actual text.
+                    // Read the reference token at its own alignment, not a fixed-width window
+                    // that also consumes PAIEMENT, COMMISSION or TAXE in the neighboring cell.
+                    var referenceToken = anchor.Words.FirstOrDefault(w => Math.Abs(w.Left - header.Reference.Left) <= 12
+                        && w.Left >= descriptionStart && !dateWords.Contains(w) && !valueWords.Contains(w)
+                        && Regex.IsMatch(w.Text, @"^(?=.*\d)[\p{L}\p{N}_./-]+$", RegexOptions.None, RegexTimeout)
+                        && !Money(w.Text).HasValue);
+                    referenceWords = referenceToken == null ? [] : [referenceToken];
                     if (referenceWords.Count > 0)
                     {
                         reference = string.Join(" ", referenceWords.Select(w => w.Text));
@@ -382,11 +426,16 @@ public sealed class StatementPdfExtractor : IStatementPdfExtractor
                     ? (valueStart?.Left ?? header.ValueDate.Left) - 3 : header.Debit.Left - 12;
                 if (header.Reference != null && header.Reference.Left > header.Description.Left && header.Reference.Left < descriptionEnd)
                     descriptionEnd = header.Reference.Left - 12;
-                var description = string.Join("\n", Lines(band.Where(w => w.Left >= descriptionStart && w.Left < descriptionEnd && w.Right <= descriptionEnd + 2))
+                var description = string.Join("\n", Lines(band.Where(w => w.Left >= descriptionStart && w.Left < descriptionEnd
+                        && !dateWords.Contains(w) && !valueWords.Contains(w) && !referenceWords.Contains(w)))
                     .Where(l => !Has(l.Text, @"\bSOLDE\b|\bREPORT\s+PAGE\b|^\s*TOTAL\b"))
                     .Select(l => Regex.Replace(l.Text.Trim(), @"\s+", " ", RegexOptions.None, RegexTimeout)));
                 var financial = anchor.Words.Where(w => !dateWords.Contains(w) && !valueWords.Contains(w) && !referenceWords.Contains(w) && w.Left > Math.Max(descriptionEnd, header.MoneyStart) && w.Left < header.Credit.Right + 85).ToList();
-                decimal? Cell(bool debit) => Money(string.Join(" ", financial.Where(w => (w.Left + w.Right) / 2 < header.MoneySplit == debit).Select(w => w.Text)));
+                decimal? Cell(bool debit)
+                {
+                    var cell = string.Join(" ", financial.Where(w => (w.Left + w.Right) / 2 < header.MoneySplit == debit).Select(w => w.Text));
+                    return StatementValueParser.Money(cell, currency);
+                }
                 var debit = Cell(true);
                 var credit = Cell(false);
                 string RawDateCell(Token? caption)
@@ -408,6 +457,7 @@ public sealed class StatementPdfExtractor : IStatementPdfExtractor
                 transactions.Add(new()
                 {
                     Sequence = sequence,
+                    SourcePages = [document.Pages[pageIndex].Number],
                     Date = operationDate,
                     ValueDate = valueDate,
                     Description = description,

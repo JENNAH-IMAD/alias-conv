@@ -56,7 +56,7 @@ public sealed class ProcessingProgressStore(TimeProvider? clock = null)
                 Percent = Math.Max(status.Percent, Math.Clamp(percent, 0, stage == "done" ? 100 : 99)),
                 ActiveStage = stage is "done" or "failed" or "cancelled" ? status.ActiveStage : stage,
                 UpdatedAt = time.GetUtcNow(),
-                ExtractedPages = extractedPages ?? status.ExtractedPages,
+                ExtractedPages = extractedPages.HasValue ? Math.Max(status.ExtractedPages ?? 0, extractedPages.Value) : status.ExtractedPages,
                 TotalPages = totalPages ?? status.TotalPages
             });
         }

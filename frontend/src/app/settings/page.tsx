@@ -10,11 +10,14 @@ import { PageHeader } from '@/components/page-header';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 
 type OcrSettings = {
-  provider: 'LOCAL' | 'AI_STUDIO';
+  provider: 'AUTO' | 'LOCAL' | 'AI_STUDIO' | 'OPENROUTER';
+  autoPaddleProvider?: 'LOCAL' | 'AI_STUDIO';
   cloudModel: string;
   baseUrl: string;
   hasToken: boolean;
   apiUrl: string;
+  openRouterModel?: string;
+  hasOpenRouterToken?: boolean;
 };
 export default function OcrSettingsPage() {
   const { user } = useAuth();
@@ -25,7 +28,7 @@ export default function OcrSettingsPage() {
       <PageHeader
         icon={ScanLine}
         eyebrow="Administration"
-        title="Configuration PaddleOCR"
+        title="Configuration des moteurs de lecture"
         description="Configurez le moteur de lecture partagé par les utilisateurs de l’application."
       />
       <LoadState loading={api.loading} error={api.error} />
@@ -43,6 +46,13 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
   const [model, setModel] = useState(initial.cloudModel);
   const [baseUrl, setBaseUrl] = useState(initial.baseUrl);
   const [token, setToken] = useState('');
+  const [autoPaddleProvider, setAutoPaddleProvider] = useState(
+    initial.autoPaddleProvider ?? 'LOCAL',
+  );
+  const [openRouterModel, setOpenRouterModel] = useState(
+    initial.openRouterModel ?? 'openrouter/free',
+  );
+  const [openRouterToken, setOpenRouterToken] = useState('');
   const [saved, setSaved] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -51,7 +61,10 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
     provider !== saved.provider ||
     model !== saved.cloudModel ||
     baseUrl !== saved.baseUrl ||
-    token !== '';
+    token !== '' ||
+    openRouterModel !== (saved.openRouterModel ?? 'openrouter/free') ||
+    openRouterToken !== '' ||
+    autoPaddleProvider !== (saved.autoPaddleProvider ?? 'LOCAL');
   useUnsavedChanges(dirty);
   // The API never returns the token, including after saving.
   return (
@@ -71,6 +84,9 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
               cloudModel: model,
               baseUrl,
               cloudToken: token.trim() || null,
+              openRouterModel,
+              openRouterToken: openRouterToken.trim() || null,
+              autoPaddleProvider,
             }),
           });
           setSaved(settings);
@@ -78,6 +94,9 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
           setModel(settings.cloudModel);
           setBaseUrl(settings.baseUrl);
           setToken('');
+          setOpenRouterModel(settings.openRouterModel ?? 'openrouter/free');
+          setOpenRouterToken('');
+          setAutoPaddleProvider(settings.autoPaddleProvider ?? 'LOCAL');
           setNotice(
             'Configuration enregistrée. Elle s’applique aux nouvelles conversions, sans redémarrage.',
           );
@@ -107,11 +126,104 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
             value={provider}
             onChange={(event) => setProvider(event.target.value as OcrSettings['provider'])}
           >
+            <option value="AUTO">
+              Automatique — lecture locale, PaddleOCR et assistance gratuite
+            </option>
             <option value="AI_STUDIO">API PaddleOCR AI Studio</option>
             <option value="LOCAL">PaddleOCR local</option>
+            <option value="OPENROUTER">OpenRouter — transcription fidèle du relevé</option>
           </select>
         </label>
-        {provider === 'AI_STUDIO' ? (
+        {provider === 'AUTO' && (
+          <div className="rounded-xl border p-4 space-y-3">
+            <p className="font-semibold">Lecture automatique avec contrôles</p>
+            <p className="muted text-sm">
+              Le texte du PDF est lu localement en priorité. Les pages non reconnues passent par
+              PaddleOCR, puis par OpenRouter gratuit si nécessaire. Les pages manquantes et les
+              incohérences restent signalées avant validation.
+            </p>
+            <label className="block">
+              Moteur PaddleOCR du mode automatique
+              <select
+                aria-label="Moteur PaddleOCR du mode automatique"
+                className="ui-input mt-2"
+                value={autoPaddleProvider}
+                onChange={(event) =>
+                  setAutoPaddleProvider(event.target.value as 'LOCAL' | 'AI_STUDIO')
+                }
+              >
+                <option value="LOCAL">PaddleOCR local — sans envoi à AI Studio</option>
+                <option value="AI_STUDIO">PaddleOCR AI Studio — jeton et quota requis</option>
+              </select>
+            </label>
+          </div>
+        )}
+        {(provider === 'OPENROUTER' || provider === 'AUTO') && (
+          <>
+            <div className="rounded-xl border p-4 space-y-2">
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <Server size={16} /> OpenRouter
+              </p>
+              <p className="muted text-sm">
+                {provider === 'AUTO'
+                  ? 'Seules les pages non résolues sont transmises à OpenRouter et au fournisseur du modèle choisi.'
+                  : 'Chaque page du PDF est transmise à OpenRouter et au fournisseur du modèle choisi.'}
+                Seuls les modèles gratuits et le parseur PDF gratuit sont autorisés. La lecture
+                conserve les colonnes et les lignes du document dans un texte à vérifier avec
+                l’original.
+              </p>
+              <p className="muted text-sm">
+                Étape 1 : transcription du relevé. Étape 2 : correction des données puis export Sage
+                ou CSV selon le modèle choisi. Le modèle d’export ne modifie pas le texte source.
+              </p>
+            </div>
+            <label className="block">
+              Modèle OpenRouter
+              <input
+                aria-label="Modèle OpenRouter"
+                className="ui-input mt-2"
+                required
+                maxLength={200}
+                pattern="openrouter/free|.+:free"
+                value={openRouterModel}
+                spellCheck={false}
+                onChange={(event) => setOpenRouterModel(event.target.value)}
+              />
+              <span className="muted text-xs mt-2 block">
+                Exemple : openrouter/free ou un modèle se terminant par :free. Les modèles payants
+                sont refusés. Les quotas et la disponibilité des modèles gratuits s’appliquent.
+              </span>
+            </label>
+            <label className="block">
+              <span className="flex items-center gap-2">
+                <KeyRound size={16} /> Clé API OpenRouter
+              </span>
+              <input
+                aria-label="Clé API OpenRouter"
+                className="ui-input mt-2"
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                maxLength={4096}
+                value={openRouterToken}
+                onChange={(event) => setOpenRouterToken(event.target.value)}
+                required={provider === 'OPENROUTER' && !saved.hasOpenRouterToken}
+                placeholder={
+                  saved.hasOpenRouterToken
+                    ? 'Laisser vide pour conserver la clé enregistrée'
+                    : 'Saisir votre clé OpenRouter'
+                }
+              />
+              <span className="muted text-xs mt-2 block">
+                {saved.hasOpenRouterToken
+                  ? 'Une clé OpenRouter est déjà configurée.'
+                  : 'Aucune clé OpenRouter configurée.'}
+              </span>
+            </label>
+          </>
+        )}
+        {(provider === 'AI_STUDIO' ||
+          (provider === 'AUTO' && autoPaddleProvider === 'AI_STUDIO')) && (
           <>
             <div className="rounded-xl border p-4 space-y-2">
               <p className="flex items-center gap-2 text-sm font-semibold">
@@ -174,7 +286,8 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
               </span>
             </label>
           </>
-        ) : (
+        )}
+        {(provider === 'LOCAL' || (provider === 'AUTO' && autoPaddleProvider === 'LOCAL')) && (
           <label className="block">
             Adresse du moteur OCR local
             <input

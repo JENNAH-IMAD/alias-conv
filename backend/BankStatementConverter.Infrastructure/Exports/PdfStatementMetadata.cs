@@ -68,10 +68,22 @@ public static class PdfStatementMetadata
             end ??= new DateOnly(month.Year, month.Month, DateTime.DaysInMonth(month.Year, month.Month));
             warnings.Add(new("PDF_PERIOD_INFERRED", "La période mensuelle a été complétée à partir des dates des mouvements. Vérifiez-la avec le relevé.", SourceField: "PeriodEnd"));
         }
-        var accountLines = pages.Take(1).SelectMany(p => Lines(p with { Boxes = p.Boxes.Where(b => b.Top < p.Height * .3).ToArray() }));
+        var accountLines = pages.Take(1).SelectMany(p => Lines(p with { Boxes = p.Boxes.Where(b => b.Top < p.Height * .3).ToArray() })).ToArray();
         var printedAccount = accountLines.Select(line => Match(Fold(line), @"^(?:N[°ºO]\s*DE\s+|NUMERO\s+DE\s+)?COMPTE\s*:?\s*([0-9][0-9 ]{5,35}[0-9](?: ?[A-Z]\b)?)\b"))
             .FirstOrDefault(m => m.Success);
         var accountNumber = manual?.AccountNumber ?? s.AccountNumber ?? (printedAccount?.Success == true ? printedAccount.Groups[1].Value.Trim() : null);
+        // Online account cards print "holder - 000.00..." below their account-type caption.
+        // Require that caption and one unambiguous identifier; never use a movement reference.
+        var cards = accountLines.Select((line, index) => (line, index))
+            .Where(item => Match(Fold(item.line), @"^COMPTE\s+(?:COURANT|CHEQUES?|EPARGNE)\b").Success)
+            .SelectMany(item => accountLines.Skip(item.index + 1).Take(2))
+            .Select(line => Match(line, @"^(?<holder>.+?)\s*[-–—]\s*(?<account>\d{2,}(?:\s*\.\s*\d{2,}){3,})\s*$"))
+            .Where(match => match.Success).DistinctBy(match => match.Groups["account"].Value).ToArray();
+        if (cards.Length == 1)
+        {
+            accountNumber ??= cards[0].Groups["account"].Value;
+            holder ??= cards[0].Groups["holder"].Value.Trim();
+        }
         if (manual?.AccountNumber == null && accountNumber != null && !accountNumber.Any(char.IsDigit))
             accountNumber = null;
         if (accountNumber == null)

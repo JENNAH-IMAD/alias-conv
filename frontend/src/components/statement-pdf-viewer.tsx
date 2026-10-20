@@ -201,7 +201,7 @@ export function StatementPdfViewer({
           <h2>{readOnly ? 'Votre relevé converti' : 'Votre relevé original'}</h2>
           <p>
             {readOnly
-              ? 'PDF structuré à cinq colonnes, généré à partir des corrections enregistrées.'
+              ? 'Copie structurée du relevé source, ou rapport des mouvements sélectionnés.'
               : selectable
                 ? 'Cliquez sur un texte pour le sélectionner. Plusieurs clics combinent les valeurs.'
                 : 'Consultez le document source. Corrigez les données directement dans le tableau.'}

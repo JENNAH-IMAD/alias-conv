@@ -29,7 +29,6 @@ L’interface est disponible sur `http://localhost:3002`. Le proxy `/api` utilis
 npm run typecheck
 npm run lint
 npm run build
-npm run test:e2e
 ```
 
 `npm start` lance la compilation de production existante.

@@ -37,9 +37,11 @@ public static class PaddleDocumentParser
                     if (bbox.Length != 4 || bbox.Any(v => !double.IsFinite(v)) || bbox[0] > bbox[2] || bbox[1] > bbox[3])
                         throw Invalid();
                     // A block box is not a cell box. Stage 2 uses the actual table cells below.
+                    var blockTables = Tables(content);
                     boxes.Add(new(PlainText(content), bbox[0] * original.Width / width, bbox[2] * original.Width / width,
-                        bbox[1] * original.Height / height, bbox[3] * original.Height / height, null));
-                    tables.AddRange(Tables(content));
+                        bbox[1] * original.Height / height, bbox[3] * original.Height / height, null,
+                        blockTables.Count == 1 ? blockTables[0] : null));
+                    tables.AddRange(blockTables);
                 }
                 var markdown = page.TryGetProperty("markdown", out var md) && md.TryGetProperty("text", out var text) ? text.GetString() : null;
                 if (markdown?.Length > 8000000)
@@ -104,7 +106,7 @@ public static class PaddleDocumentParser
                         column++;
                     var rowspan = cell.GetAttributeValue("rowspan", 1);
                     var colspan = cell.GetAttributeValue("colspan", 1);
-                    if (rowspan is < 1 or > 200 || colspan is < 1 or > 64 || column + colspan > 64 || row + rowspan > 50000)
+                    if (rowspan is < 1 or > 200 || colspan is < 1 or > 64 || column + colspan > 64)
                         throw Invalid();
                     var value = PlainText(cell.InnerHtml);
                     for (var r = 0; r < rowspan; r++)
@@ -117,8 +119,6 @@ public static class PaddleDocumentParser
                 rows.Add(Enumerable.Range(0, count).Select(c => occupied.GetValueOrDefault((row, c), "")).ToList());
                 foreach (var key in occupied.Keys.Where(k => k.Row == row).ToList())
                     occupied.Remove(key);
-                if (rows.Count > 50000)
-                    throw Invalid();
             }
             if (rows.Count > 0)
                 results.Add(new(rows));

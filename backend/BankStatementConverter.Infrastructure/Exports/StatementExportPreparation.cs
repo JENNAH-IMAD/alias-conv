@@ -66,6 +66,11 @@ public static class StatementExportPreparation
         }
         if (sources.Contains("Balance"))
             rows = CompleteRunningBalances(prepared.Statement, rows, warnings);
+        if (sources.Overlaps(["Description", "MovementDescription", "DescriptionWithBalances"]))
+            foreach (var row in rows.Where(row => !Meaningful(row.Description)))
+                warnings.Add(new("EXPORT_DESCRIPTION_REVIEW_REQUIRED",
+                    "Le libellé est vide ou réduit à des symboles. Relancez la lecture ou corrigez-le depuis le PDF ; aucune correspondance unique n'a permis de le compléter.",
+                    row.Sequence, SourceField: "Description"));
         return prepared with
         {
             Statement = prepared.Statement with
@@ -123,6 +128,7 @@ public static class StatementExportPreparation
     {
         var byDescription = new Dictionary<(string, decimal), List<int>>();
         var byReference = new Dictionary<(string, decimal), List<int>>();
+        var byDateAndAmount = new Dictionary<(DateOnly, decimal), List<int>>();
         for (var index = 0; index < extracted.Count; index++)
         {
             var candidate = extracted[index];
@@ -130,6 +136,12 @@ public static class StatementExportPreparation
                 continue;
             Add(byDescription, candidate.Description, amount, index);
             Add(byReference, candidate.Reference, amount, index);
+            if (candidate.Date.HasValue)
+            {
+                var datedKey = (candidate.Date.Value, amount);
+                if (!byDateAndAmount.TryGetValue(datedKey, out var dated)) byDateAndAmount[datedKey] = dated = [];
+                dated.Add(index);
+            }
         }
         var pairs = new List<(int Current, int Candidate)>();
         // Include complete rows when checking uniqueness: a new value may never be borrowed from another movement.
@@ -139,11 +151,16 @@ public static class StatementExportPreparation
             var row = current[index];
             if (MatchAmount(row) is not { } amount)
                 continue;
-            var key = !string.IsNullOrWhiteSpace(row.Reference) ? Text(row.Reference) : Text(row.Description);
-            var lookup = !string.IsNullOrWhiteSpace(row.Reference) ? byReference : byDescription;
-            if (key.Length == 0 || !lookup.TryGetValue((key, amount), out var options))
+            var hasReference = Meaningful(row.Reference);
+            var key = hasReference ? Text(row.Reference) : Text(row.Description);
+            var lookup = hasReference ? byReference : byDescription;
+            if (!lookup.TryGetValue((key, amount), out var options)
+                && Missing(row, "Description") && row.Date.HasValue)
+                byDateAndAmount.TryGetValue((row.Date.Value, amount), out options);
+            if (options == null)
                 continue;
-            var candidates = options.Where(i => Compatible(row, extracted[i])).Take(2).ToArray();
+            var candidates = options.Where(i => Compatible(row, extracted[i])
+                && (!hasReference || Text(row.Reference) == Text(extracted[i].Reference))).Take(2).ToArray();
             if (candidates.Length == 1)
                 pairs.Add((index, candidates[0]));
         }
@@ -195,13 +212,14 @@ public static class StatementExportPreparation
         && (!row.Debit.HasValue || row.Debit == candidate.Debit) && (!row.Credit.HasValue || row.Credit == candidate.Credit)
         && (!row.Amount.HasValue || row.Amount == MatchAmount(candidate))
         && (string.IsNullOrWhiteSpace(row.Direction) || row.Direction == candidate.Direction)
-        && (string.IsNullOrWhiteSpace(row.Description) || Text(row.Description) == Text(candidate.Description))
-        && (string.IsNullOrWhiteSpace(row.Reference) || Text(row.Reference) == Text(candidate.Reference));
+        && (!Meaningful(row.Description) || Text(row.Description) == Text(candidate.Description))
+        && (!Meaningful(row.Reference) || Text(row.Reference) == Text(candidate.Reference));
     private static bool Missing(StatementTransaction row, string source) => source switch
     {
         "Date" => !row.Date.HasValue,
         "ValueDate" => !row.ValueDate.HasValue,
-        "Reference" => string.IsNullOrWhiteSpace(row.Reference),
-        _ => string.IsNullOrWhiteSpace(row.Description)
+        "Reference" => !Meaningful(row.Reference),
+        _ => !Meaningful(row.Description)
     };
+    private static bool Meaningful(string? value) => value?.Any(char.IsLetterOrDigit) == true;
 }

@@ -162,7 +162,7 @@ export function StatementImportDialog({
                 ? `${file.size < 1024 * 1024 ? `${Math.max(1, Math.ceil(file.size / 1024))} Ko` : `${(file.size / 1024 / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} Mo`} · Cliquez pour changer de fichier`
                 : 'ou cliquez pour choisir un fichier'}
             </span>
-            <small>PDF natif ou scanné · 20 Mo maximum</small>
+            <small>PDF natif ou scanné</small>
             <input
               aria-label="Fichier PDF du relevé"
               type="file"
