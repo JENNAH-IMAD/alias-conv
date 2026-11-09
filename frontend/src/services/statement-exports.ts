@@ -20,7 +20,11 @@ export type StatementTransaction = {
   analytic?: string | null;
   recordType?: string | null;
 };
+export type ExportColumnFilter = { columnIndex: number; value: string };
 export type StatementExtract = {
+  templateId?: string | null;
+  columnFilters?: ExportColumnFilter[] | null;
+  templateFingerprint?: string | null;
   excludeText?: string;
   id: string;
   filterText: string;
@@ -83,11 +87,29 @@ export type StatementDetail = {
     pageCount: number;
     lowConfidenceCount: number;
     needsMapping: boolean;
+    readingsReviewed?: boolean;
+    sources?: { page: number; method: string; model: string | null }[] | null;
+    comparisons?:
+      | {
+          page: number;
+          primaryMethod: string;
+          secondaryMethod: string;
+          primaryModel: string | null;
+          secondaryModel: string | null;
+          acceptedMethod: string;
+          differences: {
+            row: number | null;
+            field: string;
+            primary: string | null;
+            secondary: string | null;
+            kind: string;
+          }[];
+        }[]
+      | null;
     performance?: {
       durationMs: number;
       nativePages: number;
       paddlePages: number;
-      aiPages: number;
     } | null;
   } | null;
   sourceFileName?: string | null;

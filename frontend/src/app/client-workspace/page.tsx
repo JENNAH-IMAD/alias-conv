@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, ViewTransition } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Archive } from 'lucide-react';
 import { ClientConversions } from '@/components/client-conversions';
@@ -20,7 +20,20 @@ function ClientWorkspace() {
   const [clients, setClients] = useState<Client[]>([]);
   const [error, setError] = useState('');
   const clientId = searchParams.get('clientId') ?? '';
-  const section = searchParams.get('section') === 'extracts' ? 'extracts' : 'statements';
+  const sections = [
+    ['statements', 'Relevés bancaires'],
+    ['extracts', 'Extraits de relevés bancaires'],
+  ] as const;
+  const requestedSection = searchParams.get('section');
+  const section = requestedSection === 'extracts' ? 'extracts' : 'statements';
+  useEffect(() => {
+    // Keep legacy accounting-tab links on the single client archive page.
+    if (requestedSection === 'accounting') {
+      router.replace(
+        `/client-workspace?section=statements${clientId ? `&clientId=${encodeURIComponent(clientId)}` : ''}`,
+      );
+    }
+  }, [clientId, requestedSection, router]);
   useEffect(() => {
     let active = true;
     all<Client>('/clients')
@@ -41,7 +54,7 @@ function ClientWorkspace() {
         icon={Archive}
         eyebrow="Espace clients"
         title="L’espace de vos clients."
-        description="Retrouvez les relevés bancaires et les extraits avec leurs mouvements et leurs calculs."
+        description="Retrouvez les relevés bancaires et les extraits de vos clients."
       />
       <section className="ui-card workspace-client-selector">
         <label className="workspace-client-choice">
@@ -86,12 +99,7 @@ function ClientWorkspace() {
         role="tablist"
         aria-label="Documents clients"
       >
-        {(
-          [
-            ['statements', 'Relevés bancaires'],
-            ['extracts', 'Extraits de relevés bancaires'],
-          ] as const
-        ).map(([value, label]) => (
+        {sections.map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -103,14 +111,16 @@ function ClientWorkspace() {
             onKeyDown={(event) => {
               if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
               event.preventDefault();
+              const index = sections.findIndex(([key]) => key === value);
               const target =
-                event.key === 'Home'
-                  ? 'statements'
-                  : event.key === 'End'
-                    ? 'extracts'
-                    : section === 'statements'
-                      ? 'extracts'
-                      : 'statements';
+                sections[
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? sections.length - 1
+                      : (index + (event.key === 'ArrowRight' ? 1 : -1) + sections.length) %
+                        sections.length
+                ][0];
               document.getElementById(`workspace-tab-${target}`)?.click();
               document.getElementById(`workspace-tab-${target}`)?.focus();
             }}
@@ -124,31 +134,40 @@ function ClientWorkspace() {
           </button>
         ))}
       </div>
-      <section
-        role="tabpanel"
-        id={`workspace-panel-${section}`}
-        aria-labelledby={`workspace-tab-${section}`}
+      <ViewTransition
+        key={section}
+        name="client-document-section"
+        share="workspace-page"
+        enter="workspace-page"
+        exit="workspace-page"
+        default="none"
       >
-        {section === 'extracts' ? (
-          <div className="space-y-8">
-            <ClientConversions
-              key={`sources-${clientId}`}
-              clientId={clientId}
-              conversionType="EXTRACT"
-            />
-            <details className="ui-card">
-              <summary className="cursor-pointer font-semibold">
-                Filtres sauvegardés sur les mouvements
-              </summary>
-              <div className="mt-5">
-                <ClientExtracts key={`extracts-${clientId}`} clientId={clientId} />
-              </div>
-            </details>
-          </div>
-        ) : (
-          <ClientConversions key={clientId} clientId={clientId} />
-        )}
-      </section>
+        <section
+          role="tabpanel"
+          id={`workspace-panel-${section}`}
+          aria-labelledby={`workspace-tab-${section}`}
+        >
+          {section === 'extracts' ? (
+            <div className="space-y-8">
+              <ClientConversions
+                key={`sources-${clientId}`}
+                clientId={clientId}
+                conversionType="EXTRACT"
+              />
+              <details className="ui-card">
+                <summary className="cursor-pointer font-semibold">
+                  Filtres sauvegardés sur les mouvements
+                </summary>
+                <div className="mt-5">
+                  <ClientExtracts key={`extracts-${clientId}`} clientId={clientId} />
+                </div>
+              </details>
+            </div>
+          ) : (
+            <ClientConversions key={clientId} clientId={clientId} />
+          )}
+        </section>
+      </ViewTransition>
     </div>
   );
 }

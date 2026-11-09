@@ -4,50 +4,39 @@ os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
 import math
 import asyncio
-import hashlib
-import json
+import re
+from datetime import datetime
 import threading
-import time
-from collections import OrderedDict
+import logging
 from contextlib import asynccontextmanager, contextmanager, suppress
 from functools import lru_cache
 
 import numpy as np
+import cv2
 import pymupdf
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
+from structure_engine import structure_engine, read_layout, tables_from_layout
 
 _lock = threading.Lock()
-_page_cache = OrderedDict()
-_cache_bytes = 0
-_cache_limit = 32 * 1024 * 1024
+_layout_available = None
+logger = logging.getLogger("alias.ocr")
 
 
-def cached_page(key):
-    entry = _page_cache.get(key)
-    if entry is None:
-        return None
-    expires, encoded = entry
-    if expires <= time.monotonic():
-        global _cache_bytes
-        _cache_bytes -= len(_page_cache.pop(key)[1])
-        return None
-    _page_cache.move_to_end(key)
-    return json.loads(encoded)
-
-
-def remember_page(key, page):
-    global _cache_bytes
-    encoded = json.dumps(page, ensure_ascii=False, allow_nan=False).encode("utf-8")
-    if len(encoded) > _cache_limit:
-        return
-    old = _page_cache.pop(key, None)
-    if old is not None:
-        _cache_bytes -= len(old[1])
-    while _page_cache and _cache_bytes + len(encoded) > _cache_limit:
-        _cache_bytes -= len(_page_cache.popitem(last=False)[1][1])
-    _page_cache[key] = (time.monotonic() + 600, encoded)
-    _cache_bytes += len(encoded)
+def warmup():
+    global _layout_available
+    mode = os.getenv("OCR_PIPELINE", "structure")
+    if mode not in {"structure", "text"}:
+        raise ValueError("OCR_PIPELINE doit être structure ou text.")
+    if mode == "structure":
+        try:
+            structure_engine()
+            _layout_available = True
+            return
+        except Exception as error:
+            _layout_available = False
+            logger.warning("Layout model unavailable (%s); positional OCR remains active.", type(error).__name__)
+    engine()
 
 
 @contextmanager
@@ -76,16 +65,112 @@ def engine():
                      text_det_limit_side_len=max(960, min(2560, int(os.getenv("OCR_DETECTION_MAX_SIDE", "1280")))),
                      cpu_threads=max(1, min(8, int(os.getenv("OCR_CPU_THREADS", "2")))))
 
+
+@lru_cache(maxsize=1)
+def cell_recognizer():
+    from paddleocr import TextRecognition
+    return TextRecognition(model_name=f"PP-OCRv6_{os.getenv('OCR_MODEL_SIZE', 'small')}_rec",
+                           device="cpu", enable_mkldnn=False,
+                           cpu_threads=max(1, min(8, int(os.getenv("OCR_CPU_THREADS", "2")))))
+
 @asynccontextmanager
 async def lifespan(_app):
-    await run_in_threadpool(engine)
+    await run_in_threadpool(warmup)
     yield
 
 app = FastAPI(title="Alias local OCR", lifespan=lifespan)
 
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "engine": "PaddleOCR", "version": "PP-OCRv6", "model_size": os.getenv("OCR_MODEL_SIZE", "small")}
+    return {"status": "ok", "engine": "PaddleOCR", "version": "PP-OCRv6", "model_size": os.getenv("OCR_MODEL_SIZE", "small"),
+            "pipeline": os.getenv("OCR_PIPELINE", "structure"), "pipeline_version": "local-layout-v1",
+            "layout_ready": _layout_available is True, "layout_model": os.getenv("OCR_LAYOUT_MODEL", "PP-DocLayout-M")}
+
+
+def refine_ruled_cells(image, scale, boxes):
+    """Re-read touching date columns and clipped decimals from their original pixels."""
+    def read_crop(left, top, right, bottom):
+        x, y = max(0, int(left * scale)), max(0, int(top * scale))
+        crop = image[y:min(image.shape[0], int(bottom * scale) + 1),
+                     x:min(image.shape[1], int(right * scale) + 1)].copy()
+        if not crop.size:
+            return []
+        factor = max(1, 5 / scale)
+        crop = cv2.resize(crop, None, fx=factor, fy=factor, interpolation=cv2.INTER_CUBIC)
+        binary = cv2.threshold(cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY), 180, 255, cv2.THRESH_BINARY_INV)[1]
+        # Long vertical rules confuse recognition of adjacent 1s; remove only those rules.
+        vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN,
+                                    np.ones((max(35, crop.shape[0] // 3), 1), np.uint8))
+        crop[vertical > 0] = 255
+        prediction = next(iter(engine().predict(crop[:, :, ::-1]))).json
+        data = prediction.get("res", prediction)
+        found = []
+        for text, score, poly in zip(data["rec_texts"], data["rec_scores"], data["rec_polys"], strict=True):
+            coords = np.asarray(poly)
+            a, b = coords.min(axis=0)
+            c, d = coords.max(axis=0)
+            found.append({"text": text, "left": (x + a / factor) / scale,
+                          "right": (x + c / factor) / scale, "top": (y + b / factor) / scale,
+                          "bottom": (y + d / factor) / scale, "confidence": float(score)})
+        return found
+
+    for heading in list(boxes):
+        if not re.fullmatch(r"\s*OPER\s+VALEUR\s*", heading["text"], re.IGNORECASE):
+            continue
+        left, right = heading["left"] - 4, heading["right"] + 3
+        dates = [b for b in boxes if b["top"] > heading["bottom"]
+                 and b["left"] >= left and b["right"] <= right
+                 and re.fullmatch(r"[\d/ILil|. -]+", b["text"]) and "/" in b["text"]]
+        if not dates:
+            continue
+        for found in read_crop(left, min(b["top"] for b in dates) - 3,
+                               right, max(b["bottom"] for b in dates) + 3):
+            text = re.sub(r"\s+", "", found["text"]).translate(str.maketrans({"I": "1", "l": "1", "L": "1", "i": "1", "|": "1"}))
+            match = re.fullmatch(r"(\d{2}/\d{2})(\d{2}/\d{2})", text)
+            if not match:
+                continue
+            try:
+                for value in match.groups():
+                    datetime.strptime(value + "/2000", "%d/%m/%Y")
+            except ValueError:
+                continue
+            center = (found["top"] + found["bottom"]) / 2
+            previous = [b for b in dates if abs((b["top"] + b["bottom"]) / 2 - center) < 4]
+            if len(previous) != 2:
+                continue
+            for old, value in zip(sorted(previous, key=lambda b: b["left"]), match.groups(), strict=True):
+                old.update(text=value, confidence=found["confidence"])
+    # Re-read ambiguous financial cells from pixels, including a missing decimal separator.
+    # "66 88" must not simply be changed to "66.88" by a text parser.
+    def financial_cell(box):
+        return any(re.fullmatch(r"(?:d[ée]bits?|credits?|cr[ée]dits?|debit|credit)", heading["text"].strip(), re.IGNORECASE)
+                   and heading["top"] < box["top"]
+                   and heading["left"] - 30 <= box["left"] <= heading["right"] + 55
+                   for heading in boxes)
+
+    for box in list(boxes):
+        text = box["text"].strip()
+        clipped_decimal = re.fullmatch(r"[+-]?\d[\d \u00a0]*[,.]\d", text)
+        missing_separator = re.fullmatch(r"[+-]?\d[\d \u00a0]*[ \u00a0]\d{2}", text) and financial_cell(box)
+        if not clipped_decimal and not missing_separator:
+            continue
+        padding = 3 if missing_separator else 1
+        x, y = max(0, int((box["left"] - (3 if missing_separator else 2)) * scale)), max(0, int((box["top"] - padding) * scale))
+        crop = image[y:min(image.shape[0], int((box["bottom"] + padding) * scale) + 1),
+                     x:min(image.shape[1], int((box["right"] + 3) * scale) + 1)]
+        if not crop.size:
+            continue
+        factor = 1 if missing_separator else max(1, 5 / scale)
+        crop = cv2.resize(crop, None, fx=factor, fy=factor, interpolation=cv2.INTER_CUBIC)
+        crop = cv2.copyMakeBorder(crop, 2, 2, 6, 6, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+        # Recognition alone keeps the decimal and last digit in the same financial cell.
+        result = next(iter(cell_recognizer().predict(crop[:, :, ::-1]))).json
+        result = result.get("res", result)
+        text, score = result["rec_text"].strip(), float(result["rec_score"])
+        if score >= .9 and re.fullmatch(r"[+-]?\d[\d \u00a0]*[,.]\d{2}", text):
+            box.update(text=text, confidence=score)
+    return boxes
 
 def extract_pdf(content: bytes, selected_pages: tuple[int, ...] | None = None, cancelled: threading.Event | None = None):
     try:
@@ -101,26 +186,32 @@ def extract_pdf(content: bytes, selected_pages: tuple[int, ...] | None = None, c
         if not selected or len(set(selected)) != len(selected) or any(number < 1 or number > len(pdf) for number in selected):
             raise HTTPException(400, "Sélection de pages invalide.")
         pages = []
-        digest = hashlib.sha256(content).hexdigest()
-        settings = (os.getenv("OCR_MODEL_SIZE", "small"), os.getenv("OCR_DETECTION_MAX_SIDE", "1280"))
-        # Cache only this exact PDF and model configuration, never templates or banking values
-        # borrowed from another document. Access is serialized by the inference lock below.
+        warnings = []
+        # Each request reads the original pixels again; only model weights are reused.
         with inference_lock(cancelled):
             for number in selected:
                 if cancelled is not None and cancelled.is_set():
                     raise HTTPException(499, "Lecture annulée.")
-                key = ("ocr-page-v1", digest, settings, number)
-                cached = cached_page(key)
-                if cached is not None:
-                    pages.append(cached)
-                    continue
                 page = pdf[number - 1]
                 # Bound image size independently of the uploaded PDF's page dimensions.
                 scale = min(3, 3200 / max(page.rect.width, page.rect.height))
                 pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csRGB, alpha=False)
                 image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
-                result = next(iter(engine().predict(image[:, :, ::-1])))
-                data = result.json.get("res", result.json)
+                layout = None
+                if os.getenv("OCR_PIPELINE", "structure") == "structure" and _layout_available is not False:
+                    try:
+                        layout = read_layout(image)
+                    except Exception as error:
+                        logger.warning("Page layout failed (%s); reading original pixels with OCR.", type(error).__name__)
+                if layout is None:
+                    if os.getenv("OCR_PIPELINE", "structure") == "structure":
+                        warnings.append({"code": "LOCAL_LAYOUT_UNAVAILABLE", "message": f"Page {number} : reconstruction des cellules indisponible ; lecture OCR des positions conservée."})
+                    result = next(iter(engine().predict(image[:, :, ::-1])))
+                    data = result.json.get("res", result.json)
+                else:
+                    data = layout["overall_ocr_res"]
+                if cancelled is not None and cancelled.is_set():
+                    raise HTTPException(499, "Lecture annulée.")
                 boxes = []
                 for text, score, poly in zip(data["rec_texts"], data["rec_scores"], data["rec_polys"], strict=True):
                     if not text.strip():
@@ -130,12 +221,31 @@ def extract_pdf(content: bytes, selected_pages: tuple[int, ...] | None = None, c
                     right, bottom = coords.max(axis=0).tolist()
                     if not all(math.isfinite(v) for v in (left, top, right, bottom, float(score))):
                         continue
-                    boxes.append({"text": text, "left": left / scale, "right": right / scale,
-                                  "top": top / scale, "bottom": bottom / scale, "confidence": float(score)})
-                recognized = {"number": number, "width": page.rect.width, "height": page.rect.height, "boxes": boxes}
-                remember_page(key, recognized)
+                    boxes.append({"text": text, "left": max(0, left / scale), "right": min(page.rect.width, right / scale),
+                                  "top": max(0, top / scale), "bottom": min(page.rect.height, bottom / scale), "confidence": float(score)})
+                before_refinement = [box["text"] for box in boxes]
+                boxes = refine_ruled_cells(image, scale, boxes)
+                tables = []
+                if layout is not None:
+                    try:
+                        tables, rejected = tables_from_layout(layout, scale, page.rect.width, page.rect.height)
+                        if rejected:
+                            warnings.append({"code": "LOCAL_TABLE_GRID_INVALID", "message": f"Page {number} : {rejected} grille(s) de cellules écartée(s) ; les autres tableaux et les blocs OCR restent disponibles."})
+                        # Propagate a crop-verified correction only when its source text is unique.
+                        replacements = {old: box["text"] for old, box in zip(before_refinement, boxes, strict=True)
+                                        if old != box["text"] and before_refinement.count(old) == 1}
+                        for table in tables:
+                            table["rows"] = [[replacements.get(cell.strip(), cell) for cell in row] for row in table["rows"]]
+                    except (ValueError, TypeError, KeyError):
+                        warnings.append({"code": "LOCAL_TABLE_GRID_INVALID", "message": f"Page {number} : structure du tableau écartée ; les textes et leurs positions restent disponibles."})
+                    if not tables:
+                        warnings.append({"code": "LOCAL_TABLE_GRID_NOT_FOUND", "message": f"Page {number} : aucun tableau exploitable détecté ; adaptation à partir des positions du texte."})
+                recognized = {"number": number, "width": page.rect.width, "height": page.rect.height, "boxes": boxes,
+                              "tables": tables or None,
+                              "model": f"PP-OCRv6_{os.getenv('OCR_MODEL_SIZE', 'small')}" + (" + PP-StructureV3" if layout is not None else "")}
                 pages.append(recognized)
-        return {"method": "PADDLE_OCR", "pages": pages}
+        return {"method": "PADDLE_OCR", "pages": pages, "sourcePageCount": len(pdf), "warnings": warnings,
+                "pipelineVersion": "local-layout-v1"}
 
 @app.post("/extract")
 async def extract(request: Request, file: UploadFile, pages: str | None = Form(default=None)):

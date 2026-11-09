@@ -7,6 +7,10 @@ namespace BankStatementConverter.Infrastructure;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAccessor? http = null) : DbContext(options)
 {
+    public DbSet<StatementTreatment> StatementTreatments => Set<StatementTreatment>();
+    public DbSet<ClientEntryModelSet> ClientEntryModelSets => Set<ClientEntryModelSet>();
+    public DbSet<AccountingEntryArchive> AccountingEntryArchives => Set<AccountingEntryArchive>();
+    public DbSet<EntryOutputTemplate> EntryOutputTemplates => Set<EntryOutputTemplate>();
     public DbSet<ExtractionProfile> ExtractionProfiles => Set<ExtractionProfile>();
     public DbSet<StatementActivity> StatementActivities => Set<StatementActivity>();
     public DbSet<ExtractionProfileActivity> ExtractionProfileActivities => Set<ExtractionProfileActivity>();
@@ -22,13 +26,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     public DbSet<PendingFileDeletion> PendingFileDeletions => Set<PendingFileDeletion>();
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<StatementTreatment>().HasIndex(x => new { x.StatementId, x.ScopeId }).IsUnique();
+        b.Entity<AccountingEntryArchive>().HasIndex(x => new { x.ClientId, x.CreatedAt });
+        b.Entity<AccountingEntryArchive>().HasIndex(x => new { x.StatementId, x.CreatedAt });
+        b.Entity<AccountingEntryArchive>().HasIndex(x => new { x.ClientId, x.StatementId, x.PreviewFingerprint }).IsUnique();
         b.Entity<ExtractionProfileActivity>().HasIndex(x => new { x.ProfileId, x.CreatedAt });
-        b.Entity<ExtractionProfileActivity>().Property(x => x.SnapshotJson).HasColumnType("jsonb").Metadata.SetMaxLength(null);
+        b.Entity<ExtractionProfileActivity>().Property(x => x.SnapshotJson).HasColumnType("jsonb");
         b.Entity<StatementActivity>().HasIndex(x => new { x.StatementId, x.CreatedAt });
         b.Entity<StatementActivity>().HasIndex(x => new { x.CreatedAt, x.Id });
-        b.Entity<StatementActivity>().Property(x => x.ChangesJson).HasColumnType("jsonb").Metadata.SetMaxLength(null);
+        b.Entity<StatementActivity>().Property(x => x.ChangesJson).HasColumnType("jsonb");
         b.Entity<ExportJob>().HasIndex(x => new { x.StatementId, x.CreatedAt });
-        b.Entity<ExportJob>().Property(x => x.TemplateSnapshotJson).HasColumnType("jsonb").Metadata.SetMaxLength(null);
+        b.Entity<ExportJob>().Property(x => x.TemplateSnapshotJson).HasColumnType("jsonb");
         b.Entity<ExtractionProfile>().Property(x => x.Version).IsConcurrencyToken();
         b.Entity<ExtractionProfile>().HasIndex(x => new { x.BankCode, x.Currency });
         b.Entity<StatementImport>().HasIndex(x => new { x.BankAccountId, x.FiledAt });
@@ -58,12 +66,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
                 fk.DeleteBehavior = DeleteBehavior.Restrict;
         }
         b.Entity<StatementImport>().Property(x => x.NormalizedJson).Metadata.SetMaxLength(null);
+        b.Entity<AccountingEntryArchive>().Property(x => x.SnapshotJson).HasColumnType("jsonb").Metadata.SetMaxLength(null);
+        b.Entity<EntryOutputTemplate>().Property(x => x.OutputJson).HasColumnType("jsonb").Metadata.SetMaxLength(null);
+        b.Entity<EntryOutputTemplate>().Property(x => x.Version).IsConcurrencyToken();
+        b.Entity<EntryOutputTemplate>().HasData(new EntryOutputTemplate {
+            Id = Accounting.EntryOutputTemplateCatalog.DefaultId,
+            Name = "Écriture comptable S100",
+            Description = "N° compte, Intitulé, Libellé, Banque, Date, Débit HT et Crédit HT après calcul de la TVA.",
+            OutputJson = System.Text.Json.JsonSerializer.Serialize(new EntryModelOutput(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
+            CreatedAt = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc)
+        });
+        b.Entity<StatementTreatment>().HasOne<StatementImport>().WithMany().HasForeignKey(x => x.StatementId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<StatementTreatment>().Property(x => x.SnapshotJson).HasColumnType("jsonb").Metadata.SetMaxLength(null);
         b.Entity<StatementImport>().Property(x => x.ImportDiagnosticsJson).Metadata.SetMaxLength(null);
         b.Entity<StatementImport>().Property(x => x.RawExtractionJson).Metadata.SetMaxLength(null);
         b.Entity<StatementActivity>().Property(x => x.ChangesJson).Metadata.SetMaxLength(null);
         b.Entity<ExtractionProfileActivity>().Property(x => x.SnapshotJson).Metadata.SetMaxLength(null);
         b.Entity<ExportJob>().Property(x => x.TemplateSnapshotJson).Metadata.SetMaxLength(null);
         b.Entity<WorkspaceUser>().Property(x => x.PermissionsJson).Metadata.SetMaxLength(null);
+        b.Entity<ClientEntryModelSet>().HasIndex(x => x.ClientId).IsUnique();
+        b.Entity<ClientEntryModelSet>().Property(x => x.Version).IsConcurrencyToken();
+        b.Entity<ClientEntryModelSet>().Property(x => x.ModelsJson).HasColumnType("jsonb").Metadata.SetMaxLength(null);
+        b.Entity<ClientEntryModelSet>().HasOne<Client>().WithMany().HasForeignKey(x => x.ClientId).OnDelete(DeleteBehavior.Cascade);
         foreach (var name in new[] { "MappingJson", "SampleJson", "AliasesJson" })
         {
             b.Entity<ExtractionProfile>().Property<string>(name).HasColumnType("jsonb").Metadata.SetMaxLength(null);
@@ -73,6 +98,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
     {
         ChangeTracker.DetectChanges();
         var changes = ChangeTracker.Entries<StatementImport>().Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList();
+        var clientIds = changes.Where(x => x.Entity.ClientId.HasValue).Select(x => x.Entity.ClientId!.Value).Distinct().ToArray();
+        var accountIds = changes.Where(x => x.Entity.BankAccountId.HasValue).Select(x => x.Entity.BankAccountId!.Value).Distinct().ToArray();
+        var clientNames = clientIds.Length == 0 ? new Dictionary<Guid, string>()
+            : await Clients.AsNoTracking().Where(x => clientIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+        var accountNames = accountIds.Length == 0 ? new Dictionary<Guid, string>()
+            : await BankAccounts.AsNoTracking().Where(x => accountIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.AccountName, ct);
         foreach (var entry in changes)
         {
             var item = entry.Entity;
@@ -81,8 +112,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAc
                 entry.Property(x => x.Status).IsModified && item.Status == "VALIDATED" ? "VALIDATED" :
                 entry.Property(x => x.Status).IsModified && item.Status == "EXPORTED" ? "DOWNLOAD_COMPLETED" :
                 entry.Property(x => x.SourceStorageKey).IsModified ? "SOURCE_SAVED" : "MODIFIED";
-            var client = item.ClientId.HasValue ? await Clients.AsNoTracking().Where(x => x.Id == item.ClientId).Select(x => x.Name).FirstOrDefaultAsync(ct) : null;
-            var account = item.BankAccountId.HasValue ? await BankAccounts.AsNoTracking().Where(x => x.Id == item.BankAccountId).Select(x => x.AccountName).FirstOrDefaultAsync(ct) : null;
+            var client = item.ClientId.HasValue ? clientNames.GetValueOrDefault(item.ClientId.Value) : null;
+            var account = item.BankAccountId.HasValue ? accountNames.GetValueOrDefault(item.BankAccountId.Value) : null;
             var fields = entry.Properties.Where(p => entry.State != EntityState.Modified || p.IsModified)
                 .Where(p => p.Metadata.Name is not "RawExtractionJson" and not "ImportDiagnosticsJson" and not "SourceStorageKey")
                 .ToDictionary(p => p.Metadata.Name, p => new { before = entry.State == EntityState.Added ? null : p.OriginalValue, after = entry.State == EntityState.Deleted ? null : p.CurrentValue });

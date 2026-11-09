@@ -10,6 +10,7 @@ namespace BankStatementConverter.API;
 public sealed class HistoryDeletionController(AppDbContext db) : ControllerBase
 {
     [HttpPost("{kind}/delete-selection")]
+    [HttpPost("{kind}/delete-filtered-selection")]
     public async Task<IActionResult> Delete(string kind, HistoryDeletionRequest input, CancellationToken ct)
     {
         Validation.Require(kind is "statements" or "profiles", "Historique inconnu.");
@@ -27,13 +28,14 @@ public sealed class HistoryDeletionController(AppDbContext db) : ControllerBase
                 query = query.Where(x => x.ClientId == input.ClientId);
             if (input.BankAccountId.HasValue)
                 query = query.Where(x => x.BankAccountId == input.BankAccountId);
+            query = HistoryActivityQuery.Apply(query, input.Search, input.Action, input.From, input.To);
             query = input.All ? query.Where(x => !excluded.Contains(x.Id)) : query.Where(x => ids.Contains(x.Id));
             return Ok(new
             {
                 deleted = await query.ExecuteDeleteAsync(ct)
             });
         }
-        Validation.Require(!input.StatementId.HasValue && !input.ClientId.HasValue && !input.BankAccountId.HasValue, "Filtres incompatibles avec l’historique des modèles.");
+        Validation.Require(!input.StatementId.HasValue && !input.ClientId.HasValue && !input.BankAccountId.HasValue && string.IsNullOrEmpty(input.Search) && string.IsNullOrEmpty(input.Action) && !input.From.HasValue && !input.To.HasValue, "Filtres incompatibles avec l’historique des modèles.");
         var profiles = db.ExtractionProfileActivities.AsQueryable();
         profiles = input.All ? profiles.Where(x => !excluded.Contains(x.Id)) : profiles.Where(x => ids.Contains(x.Id));
         return Ok(new
@@ -45,6 +47,22 @@ public sealed class HistoryDeletionController(AppDbContext db) : ControllerBase
 
 public sealed record HistoryDeletionRequest
 {
+    public string? Search
+    {
+        get; init;
+    }
+    public string? Action
+    {
+        get; init;
+    }
+    public DateOnly? From
+    {
+        get; init;
+    }
+    public DateOnly? To
+    {
+        get; init;
+    }
     public bool All
     {
         get; init;

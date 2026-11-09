@@ -70,7 +70,7 @@ public sealed class StatementImportsController(StatementImportService service, P
     [HttpPut("{id:guid}")] public Task<StatementDetail> Update(Guid id, [FromQuery] int version, BankStatement statement, CancellationToken ct) => service.UpdateAsync(id, version, statement, ct);
     [HttpPost("{id:guid}/extracts")]
     public Task<StatementDetail> SaveExtract(Guid id, SaveStatementExtractRequest input, CancellationToken ct)
-        => service.SaveExtractAsync(id, input.StatementVersion, input.FilterText ?? "", ct, input.ExcludeText ?? "", input.Statement);
+        => service.SaveExtractAsync(id, input.StatementVersion, input.FilterText ?? "", ct, input.ExcludeText ?? "", input.Statement, input.TemplateId, input.ColumnFilters, input.TemplateFingerprint);
     [HttpDelete("{id:guid}/extracts/{extractId:guid}")]
     public Task<StatementDetail> ResetExtract(Guid id, Guid extractId, [FromQuery] int version, CancellationToken ct)
         => service.ResetExtractAsync(id, extractId, version, ct);
@@ -85,6 +85,7 @@ public sealed class StatementImportsController(StatementImportService service, P
     public async Task<IActionResult> DownloadExtract(Guid id, Guid extractId, CancellationToken ct)
     {
         var detail = await service.GetAsync(id, ct);
+        StatementImportService.EnsureAccountingExportAllowed(detail);
         var extract = detail.Statement.Extracts.SingleOrDefault(x => x.Id == extractId) ?? throw new AppException(404, "Extrait introuvable.");
         Response.Headers.CacheControl = "no-store";
         return File(StatementExtracts.Csv(extract), "text/csv; charset=utf-8", $"extrait_{extractId:N}.csv");
@@ -94,6 +95,7 @@ public sealed class StatementImportsController(StatementImportService service, P
     public async Task<IActionResult> StandardDownload(Guid id, CancellationToken ct)
     {
         var detail = await service.GetAsync(id, ct);
+        StatementImportService.EnsureAccountingExportAllowed(detail);
         if (detail.Status != "VALIDATED")
             throw new AppException(422, "Validez le relevé avant de télécharger le CSV standard.");
         Response.Headers.CacheControl = "no-store";
@@ -106,43 +108,11 @@ public sealed class StatementImportsController(StatementImportService service, P
         Response.Headers.CacheControl = "no-store";
         if (detail.Version != version)
             throw new AppException(409, "Le relevé a été modifié. Actualisez l’aperçu avant de télécharger le PDF.");
-        // Saved filtered selections remain a banking report; full PDFs retain the source fields.
+        // Saved selections use their filtered movements; full PDFs retain the source fields.
         var content = extractId.HasValue || detail.Extraction == null
             ? NormalizedStatementPdf.Generate(StatementExtracts.ForExport(detail.Statement, extractId), detail.Status == "VALIDATED")
-            : NormalizedStatementPdf.GenerateSource(await service.ExtractionAsync(id, ct));
+            : NormalizedStatementPdf.GenerateSource(await service.ExtractionAsync(id, ct), detail.Statement);
         return preview ? File(content, "application/pdf") : File(content, "application/pdf", $"{(extractId.HasValue ? "extrait" : "releve")}_{id:N}_structure.pdf");
-    }
-    [HttpGet("{id:guid}/conversion-report")]
-    public async Task<IActionResult> ConversionReport(Guid id, [FromQuery] int version, CancellationToken ct, [FromQuery] Guid? extractId = null)
-    {
-        var detail = await service.GetAsync(id, ct);
-        if (detail.Version != version)
-            throw new AppException(409, "Le relevé a été modifié. Actualisez l’aperçu avant de télécharger le rapport.");
-        var raw = await service.ExtractionAsync(id, ct);
-        var s = StatementExtracts.ForExport(detail.Statement, extractId);
-        var debit = s.Transactions.Sum(t => t.Debit ?? 0);
-        var credit = s.Transactions.Sum(t => t.Credit ?? 0);
-        var validation = new StatementValidator().Validate(s);
-        var report = new
-        {
-            extractId,
-            status = detail.Status,
-            method = raw.Method,
-            pages = raw.Pages.Select(p => p.Number),
-            operations = s.Transactions.Count,
-            totalDebit = debit,
-            totalCredit = credit,
-            s.OpeningBalance,
-            s.ClosingBalance,
-            balanceDifference = s.OpeningBalance.HasValue && s.ClosingBalance.HasValue ? s.ClosingBalance - (s.OpeningBalance + credit - debit) : null,
-            validation,
-            detail.Warnings,
-            detail.Errors,
-            movements = s.Transactions.Select(t => new { t.Sequence, t.SourcePages }),
-            note = "Les totaux calculés et l'équilibre ne prouvent pas l'exhaustivité. Comparez les opérations et les données incertaines au PDF original."
-        };
-        Response.Headers.CacheControl = "no-store";
-        return File(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(report, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true }), "application/json", $"releve_{id:N}_controles.json");
     }
     [HttpGet("{id:guid}/extraction")]
     public async Task<PdfTextDocument> Extraction(Guid id, CancellationToken ct)
@@ -181,6 +151,12 @@ public sealed class StatementImportsController(StatementImportService service, P
         var result = await service.ValidateAsync(id, request.Version, ct);
         return result.Errors.Count > 0 ? UnprocessableEntity(result) : Ok(result);
     }
+    [HttpPost("{id:guid}/review-readings")]
+    public Task<StatementDetail> ReviewReadings(Guid id, StatementVersionRequest request, CancellationToken ct)
+        => service.ReviewReadingsAsync(id, request.Version, ct);
+    [HttpPost("{id:guid}/reread")]
+    public Task<StatementDetail> Reread(Guid id, StatementVersionRequest request, [FromServices] IAutomaticPdfExtraction extraction, CancellationToken ct)
+        => service.RereadAsync(id, request.Version, extraction, ct);
 }
 public sealed class PdfStatementForm
 {

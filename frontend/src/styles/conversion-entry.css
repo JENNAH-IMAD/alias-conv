@@ -88,23 +88,6 @@
   font-size: 11px;
   color: var(--muted-foreground);
 }
-.conversion-document-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 22px;
-}
-.conversion-document-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 26px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-}
-.conversion-document-card.is-extract {
-  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
-}
 .conversion-document-top {
   display: flex;
   align-items: center;
@@ -126,59 +109,6 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--muted-foreground);
-}
-.conversion-document-card h3 {
-  font-size: 23px;
-  font-weight: 700;
-  letter-spacing: -0.035em;
-}
-.conversion-document-card > p {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--muted-foreground);
-  margin: 12px 0 22px;
-  max-width: 500px;
-}
-.conversion-document-card ul {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 28px;
-  font-size: 12px;
-  color: var(--muted-foreground);
-}
-.conversion-document-card li {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-.conversion-document-card li svg {
-  flex-shrink: 0;
-  color: var(--link);
-}
-.conversion-document-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 17px;
-  margin-top: auto;
-}
-.conversion-document-actions > .ui-button {
-  min-height: 44px;
-  width: 100%;
-}
-.conversion-document-actions > button:not(.ui-button) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--link);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 0;
-  text-align: left;
-}
-.conversion-document-actions > button:not(.ui-button):hover {
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 .conversion-entry-journey {
   display: grid;
@@ -311,9 +241,6 @@
   .conversion-launchpad {
     padding: 24px;
   }
-  .conversion-document-card {
-    padding: 22px;
-  }
 }
 @media (max-width: 640px) {
   .app-shell .conversion-entry-hero {
@@ -321,16 +248,6 @@
   }
   .conversion-launchpad {
     padding: 20px 16px;
-  }
-  .conversion-document-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-  .conversion-document-card {
-    padding: 20px;
-  }
-  .conversion-document-card h3 {
-    font-size: 21px;
   }
   .conversion-document-top {
     margin-bottom: 18px;

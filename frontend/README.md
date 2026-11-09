@@ -12,6 +12,11 @@ et une option explicite pour télécharger avec erreurs sans valider le relevé.
 Next.js 16, React 19, TypeScript et Tailwind CSS 4.
 
 Le sidebar propose une vue standard, une vue compacte et un menu mobile.
+Les pages de conversion partagent une fiche bancaire compacte et un panneau
+**Documents** repliable pour afficher le tableau sur toute la largeur. Les erreurs
+à corriger sont prioritaires ; les points de contrôle complémentaires et les
+détails des moteurs de lecture peuvent être dépliés. L’affichage s’adapte aux
+écrans d’ordinateur, de tablette et de téléphone.
 Les pages partagent le même style clair/sombre et des animations qui respectent
 la préférence « réduire les animations ». Le traitement PDF affiche les étapes
 réelles, les pages lues et le temps écoulé. Le téléchargement prépare automatiquement
@@ -34,3 +39,7 @@ npm run build
 `npm start` lance la compilation de production existante.
 Voir [le README principal](../README.md) pour la base de données et le lancement de l’API.
 Voir [les conventions du projet](../docs/qualite-projet.md) pour l'organisation du code et les vérifications.
+
+Depuis la racine du dépôt, `scripts/Check-Project.ps1 -Production` vérifie aussi
+le backend et les outils de livraison. Il utilise `.next-runtime` pour son build
+Next.js afin de conserver le serveur de développement actif dans `.next`.

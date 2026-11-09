@@ -191,7 +191,8 @@
   margin-top: 16px;
 }
 .export-step .conversion-export-actions .ui-button {
-  height: 44px;
+  height: auto;
+  min-height: 44px;
   font-size: 13px;
 }
 .export-step .conversion-manage-link {
@@ -860,11 +861,11 @@ textarea.statement-cell-input {
   cursor: pointer;
   border-bottom: 1px solid var(--border);
 }
-.pdf-display-toggle svg:last-child {
+.pdf-display-toggle > svg:last-child {
   margin-left: auto;
   transition: transform 0.15s;
 }
-.pdf-display-toggle[aria-expanded='true'] svg:last-child {
+.pdf-display-toggle[aria-expanded='true'] > svg:last-child {
   transform: rotate(180deg);
 }
 .pdf-display-toggle:focus-visible {

@@ -8,10 +8,14 @@ import {
   descriptionSources,
   newExportTemplate,
   sageX3Fields,
+  isAccountingTemplate,
+  accountingFields,
 } from '@/services/export-template-defaults';
 
 const sources = [
   ['Date', 'Date'],
+  ['Day', "Jour de l'écriture (01-31)"],
+  ['Pointage', 'Pointage (vide si non renseigné)'],
   ['ValueDate', 'Date de valeur'],
   ['Journal', 'Journal'],
   ['Account', 'Compte comptable'],
@@ -23,7 +27,8 @@ const sources = [
   ['Reference', 'Référence'],
   ['Amount', 'Montant'],
   ['Direction', 'Sens'],
-  ['Analytic', 'Analytique'],
+  ['Analytic', 'Section analytique'],
+  ['AnalyticPlan', 'Plan analytique'],
   ['Balance', 'Solde'],
   ['OpeningBalance', 'Solde initial'],
   ['ClosingBalance', 'Solde final'],
@@ -32,6 +37,16 @@ const sources = [
   ['StatementNumber', 'Numéro de relevé'],
   ['RecordType', 'Type de ligne'],
   ['Sequence', 'Numéro de ligne'],
+  ['BankJournal', 'Journal du compte bancaire sélectionné'],
+  ['BankAccount', 'Compte comptable du compte bancaire sélectionné'],
+  ['AccountingDebit', 'Débit comptable banque (selon convention du relevé)'],
+  ['AccountingCredit', 'Crédit comptable banque (selon convention du relevé)'],
+  ['Constant', 'Valeur fixe paramétrable'],
+  ['PieceNumber', 'Numéro de pièce comptable'],
+  ['ThirdParty', 'Compte tiers'],
+  ['InvoiceNumber', 'Numéro de facture'],
+  ['DueDate', 'Date d’échéance'],
+  ['PaymentMethod', 'Mode de règlement'],
 ];
 const dateFormats = [
   'ddMMyy',
@@ -157,6 +172,10 @@ export function ExportTemplateEditor({
                 value={model.type}
                 onChange={(e) => {
                   const type = e.target.value as ExportTemplate['type'];
+                  if (!initial && isAccountingTemplate(type)) {
+                    setModel(newExportTemplate(type));
+                    return;
+                  }
                   setModel((previous) => ({
                     ...previous,
                     type,
@@ -178,9 +197,56 @@ export function ExportTemplateEditor({
                 <option value="CUSTOMCSV">CSV personnalisé</option>
                 <option value="SAGE100">Sage 100</option>
                 <option value="SAGEX3">Sage X3</option>
+                <option value="SAGE100ENTRIES">Sage 100 — écritures comptables</option>
+                <option value="SAGEX3ENTRIES">Sage X3 — écritures comptables</option>
               </select>
             </label>
           </div>
+          {model.type === 'SAGE100ENTRIES' && (
+            <section className="template-balance-settings">
+              <strong>Écritures du journal bancaire — 11 colonnes</strong>
+              <p>
+                Jour, N° pièce, N° facture, Référence, N° compte général, N° compte tiers, Libellé
+                écriture, Date échéance, Pointage, Débit, Crédit.
+              </p>
+              <p>
+                Le jour est extrait de la date comptable (01–31). Le compte général appartient à
+                chaque ligne : banque ou contrepartie. Facture, tiers, échéance et pointage restent
+                vides s’ils ne sont pas renseignés.
+              </p>
+              <p>
+                Ce format utilise le journal et le mois sélectionnés dans le dossier Sage. Exportez
+                une seule période mensuelle à la fois ; pour plusieurs périodes, ajoutez les
+                colonnes Date et Journal. Les montants sont ceux des écritures équilibrées.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update('fields', accountingFields('SAGE100ENTRIES'))}
+              >
+                Appliquer les 11 colonnes Sage 100
+              </Button>
+            </section>
+          )}
+          {model.type === 'SAGEX3ENTRIES' && (
+            <section className="template-balance-settings">
+              <strong>Écritures du compte bancaire</strong>
+              <p>
+                Le journal et le compte comptable proviennent du compte bancaire associé au relevé.
+                Vous pouvez modifier la source de chaque colonne ou choisir une valeur fixe.
+              </p>
+              <p>
+                Les débits et crédits comptables suivent la convention du relevé. Les sources Débit
+                et Crédit conservent les valeurs bancaires d’origine. Aucune ligne de solde n’est
+                ajoutée.
+              </p>
+              <p>
+                Adaptez ce fichier délimité au modèle d’import de votre dossier Sage. Complétez les
+                contreparties et contrôlez l’équilibre des pièces avant intégration. Pour X3,
+                renseignez le site et le type de pièce si votre modèle les exige.
+              </p>
+            </section>
+          )}
           {model.type === 'SAGEX3' && (
             <section className="template-balance-settings">
               <div>
@@ -239,6 +305,7 @@ export function ExportTemplateEditor({
               Séparateur
               <select
                 aria-label="Séparateur"
+                disabled={model.fileExtension === 'tsv'}
                 className="ui-input mt-2"
                 value={model.delimiter}
                 onChange={(e) => update('delimiter', e.target.value)}
@@ -287,7 +354,33 @@ export function ExportTemplateEditor({
             format des nombres choisit la virgule ou le point décimal. Reprenez les réglages
             attendus par votre logiciel comptable.
           </p>
-          <p className="text-sm opacity-70">Extension : .{model.fileExtension}</p>
+          {isAccountingTemplate(model.type) ? (
+            <label className="block">
+              Type de fichier d’exportation
+              <select
+                aria-label="Type de fichier d'exportation"
+                className="ui-input mt-2"
+                value={model.fileExtension}
+                onChange={(event) =>
+                  setModel((previous) => ({
+                    ...previous,
+                    fileExtension: event.target.value,
+                    delimiter: event.target.value === 'tsv' ? '\t' : previous.delimiter,
+                  }))
+                }
+              >
+                <option value="txt">TXT délimité (.txt)</option>
+                <option value="csv">CSV (.csv)</option>
+                <option value="tsv">TSV, tabulation (.tsv)</option>
+              </select>
+              <p className="muted text-sm">
+                Fichier texte délimité ; le format natif PNM et les classeurs Excel ne sont pas
+                générés par ce modèle.
+              </p>
+            </label>
+          ) : (
+            <p className="text-sm opacity-70">Extension : .{model.fileExtension}</p>
+          )}
           <div className="flex flex-wrap gap-6">
             <label className="flex items-center gap-2">
               <input
@@ -376,23 +469,44 @@ export function ExportTemplateEditor({
                     </select>
                   </label>
                   <label>
-                    Format {index + 1}
-                    <select
-                      aria-label={`Format ${index + 1}`}
-                      className="ui-input mt-2"
-                      value={field.format ?? ''}
-                      onChange={(e) => updateField(index, { format: e.target.value || null })}
-                    >
-                      <option value="">Par défaut</option>
-                      {(field.sourceField === 'Date' || field.sourceField === 'ValueDate'
-                        ? dateFormats
-                        : ['0.00', '0.000', '0.##']
-                      ).map((format) => (
-                        <option key={format} value={format}>
-                          {format}
-                        </option>
-                      ))}
-                    </select>
+                    {field.sourceField === 'Constant' ? 'Valeur fixe' : 'Format'} {index + 1}
+                    {field.sourceField === 'Day' || field.sourceField === 'Pointage' ? (
+                      <Input
+                        className="ui-input mt-2"
+                        readOnly
+                        value={
+                          field.sourceField === 'Day'
+                            ? 'Jour du mois : 01–31'
+                            : 'Texte, vide si non renseigné'
+                        }
+                        aria-label={`Format ${index + 1}`}
+                      />
+                    ) : field.sourceField === 'Constant' ? (
+                      <Input
+                        aria-label={`Valeur fixe ${index + 1}`}
+                        className="ui-input mt-2"
+                        maxLength={2000}
+                        value={field.format ?? ''}
+                        onChange={(event) => updateField(index, { format: event.target.value })}
+                      />
+                    ) : (
+                      <select
+                        aria-label={`Format ${index + 1}`}
+                        className="ui-input mt-2"
+                        value={field.format ?? ''}
+                        onChange={(e) => updateField(index, { format: e.target.value || null })}
+                      >
+                        <option value="">Par défaut</option>
+                        {(['Date', 'ValueDate', 'DueDate'].includes(field.sourceField)
+                          ? dateFormats
+                          : ['0.00', '0.000', '0.##']
+                        ).map((format) => (
+                          <option key={format} value={format}>
+                            {format}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </label>
                 </div>
                 <label className="mt-3 flex items-center gap-2">

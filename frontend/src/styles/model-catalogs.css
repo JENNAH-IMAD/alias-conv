@@ -1,0 +1,106 @@
+.templates-page,
+.model-catalog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.model-section-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px !important;
+  border-radius: 12px;
+}
+.model-section-switcher button {
+  min-height: 40px;
+  font-size: 13px;
+  box-shadow: none;
+}
+.templates-page .alias-page-header,
+.entry-models-page:not(.entry-models-embedded) > .alias-page-header {
+  min-height: 164px;
+  padding: 24px 28px;
+  border-radius: 16px;
+}
+.templates-page .template-grid {
+  align-items: stretch;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 20px;
+}
+.templates-page .template-card,
+.templates-page .entry-model-card,
+.entry-models-page .entry-model-card {
+  gap: 16px;
+  padding: 20px;
+  border-radius: 12px;
+}
+.templates-page .template-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.templates-page .template-card h2,
+.templates-page .entry-model-card h3 {
+  font-size: 17px;
+  line-height: 1.5;
+}
+.templates-page .catalog-card-actions,
+.templates-page .entry-model-card > .entry-model-actions,
+.entry-model-card > .entry-model-actions {
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.entry-models-page .entry-model-context {
+  padding: 20px 24px;
+  border-radius: 12px;
+  gap: 20px;
+}
+.entry-models-page .entry-model-context > label {
+  max-width: 600px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.entry-models-page .entry-model-empty {
+  min-height: 240px;
+  justify-content: center;
+  border-radius: 12px;
+  gap: 12px;
+}
+.model-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border-radius: 16px;
+  background: var(--accent);
+  color: var(--link);
+}
+.entry-models-page .entry-model-empty p {
+  max-width: 460px;
+  font-size: 13px;
+}
+@media (max-width: 767px) {
+  .model-section-switcher > button {
+    flex: 1 1 180px;
+  }
+  .templates-page .alias-page-header,
+  .entry-models-page:not(.entry-models-embedded) > .alias-page-header {
+    min-height: 0;
+    padding: 20px;
+  }
+  .entry-models-page .entry-model-context {
+    align-items: stretch;
+    padding: 20px;
+  }
+  .entry-models-page .entry-model-context > label {
+    flex-basis: 100%;
+  }
+}

@@ -8,13 +8,26 @@ public static class Seed
     public static async Task RunAsync(AppDbContext db, IConfiguration config)
     {
         var existingBanks = await db.Banks.ToListAsync();
-        // Separate the historical Saham catalog code from the Société Générale entry.
-        foreach (var bank in existingBanks.Where(bank => bank.Code == "SGMB" &&
-            MoroccanBankCatalog.IdentityCodes(bank.Name).SequenceEqual(new[] { "SAHAM" })))
-            if (!existingBanks.Any(other => other.Id != bank.Id && other.Code == "SAHAM"))
-                bank.Code = "SAHAM";
         var missingBanks = MoroccanBankCatalog.Missing(existingBanks);
         db.Banks.AddRange(missingBanks);
+        MoroccanBankCatalog.ApplyMissingLogos(existingBanks.Concat(missingBanks));
+        var sage100Templates = await db.ExportTemplates.Include(t => t.Fields).Where(t => t.Type == "SAGE100ENTRIES").ToListAsync();
+        foreach (var template in sage100Templates.Where(Exports.AccountingExportTemplates.IsLegacySage100Default))
+        {
+            var updated = Exports.AccountingExportTemplates.Create("SAGE100ENTRIES");
+            db.RemoveRange(template.Fields.ToArray());
+            template.Fields.Clear();
+            foreach (var field in updated.Fields)
+            {
+                field.ExportTemplateId = template.Id;
+                template.Fields.Add(field);
+                db.Add(field);
+            }
+            template.Description = updated.Description;
+        }
+        foreach (var type in new[] { "SAGE100ENTRIES", "SAGEX3ENTRIES" })
+            if (!await db.ExportTemplates.AnyAsync(template => template.Type == type))
+                db.ExportTemplates.Add(Exports.AccountingExportTemplates.Create(type));
         if (config.GetValue<bool>("Seed:DemoData") && !await db.Banks.AnyAsync(x => x.Code == "FICTIVE"))
         {
             var client = new Client { Name = "Client fictif", LegalName = "Démonstration uniquement", ICE = "000000000000001", IF = "DEMO", RC = "DEMO", Email = "demo@example.test", Phone = "+212600000000" };

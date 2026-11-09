@@ -16,7 +16,7 @@ internal static class PdfExtractionQuality
         var validation = new StatementValidator().Validate(s);
         // A missing convention after metadata completion means neither balance equation reconciled.
         var unbalanced = s.OpeningBalance.HasValue && s.ClosingBalance.HasValue && string.IsNullOrEmpty(s.BalanceConvention) ? 1 : 0;
-        return missing + validation.Errors.Count + unbalanced
+        return missing + validation.Errors.Count + validation.Warnings.Count(w => w.Code == "DATE_OUTSIDE_PERIOD") + unbalanced
             + extraction.Warnings.Count(w => w.Code is "PDF_DATE_UNREADABLE" or "PDF_AMOUNT_UNREADABLE" or "PDF_METADATA_OVERFLOW");
     }
 

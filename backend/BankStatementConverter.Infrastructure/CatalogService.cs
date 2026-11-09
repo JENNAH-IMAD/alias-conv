@@ -29,6 +29,11 @@ public class CatalogService<TEntity, TInput, TDto>(AppDbContext db, ICatalogDefi
             Validation.Require(((string?)property.GetValue(input))?.Length <= 2000, $"{property.Name} : maximum 2000 caractères.");
         await definition.ValidateAsync(input, db, ct);
         var entity = id.HasValue ? await definition.Query(db).FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new AppException(404, "Élément introuvable.") : new TEntity();
+        if (entity is BankAccount previous && input is BankAccountInput selected && (!id.HasValue || previous.BankId != selected.BankId))
+        {
+            var bank = await db.Banks.AsNoTracking().SingleAsync(b => b.Id == selected.BankId, ct);
+            Validation.Require(MoroccanBankCatalog.IsSelectable(bank.Name, bank.Code), "Choisissez une banque du catalogue des banques conventionnelles.");
+        }
         if (entity is BankAccount account && input is BankAccountInput changed && id.HasValue &&
            (account.ClientId != changed.ClientId || account.BankId != changed.BankId || account.Currency != changed.Currency) &&
            (await db.StatementImports.AnyAsync(s => s.BankAccountId == account.Id, ct) || await db.Documents.AnyAsync(d => d.BankAccountId == account.Id, ct)))

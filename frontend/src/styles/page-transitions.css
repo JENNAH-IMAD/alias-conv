@@ -1,0 +1,132 @@
+/* Route navigation uses a brief, restrained fade and rise; named document identities morph. */
+:root {
+  --workspace-route-duration: 230ms;
+  --workspace-route-easing: cubic-bezier(.22,.61,.36,1);
+  --workspace-route-exit-duration: 140ms;
+}
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--workspace-route-duration);
+  animation-timing-function: var(--workspace-route-easing);
+}
+::view-transition-old(*),
+::view-transition-new(*) {
+  mix-blend-mode: normal;
+}
+/* Keep the live root visible so a slow request never introduces a blank root frame. */
+::view-transition-group(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-old(root) {
+  display: none;
+}
+::view-transition-group(.workspace-page) {
+  animation: none;
+}
+::view-transition-image-pair(.workspace-page),
+::view-transition-image-pair(.workspace-detail) {
+  isolation: isolate;
+}
+::view-transition-old(.workspace-page),
+::view-transition-old(.workspace-detail) {
+  animation-name: workspace-page-out;
+  animation-fill-mode: both;
+}
+::view-transition-new(.workspace-page),
+::view-transition-new(.workspace-detail) {
+  animation-name: workspace-page-in;
+  animation-fill-mode: both;
+}
+::view-transition-old(.workspace-page) {
+  animation: workspace-page-out var(--workspace-route-exit-duration) ease-in both;
+}
+::view-transition-new(.workspace-page) {
+  animation: workspace-page-in var(--workspace-route-duration) var(--workspace-route-easing) both;
+}
+::view-transition-group(.workspace-detail) {
+  z-index: 2;
+  animation-duration: 220ms;
+}
+@keyframes workspace-page-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+@keyframes workspace-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+/* Named fixed chrome is isolated from both root and route captures. */
+.desktop-sidebar {
+  view-transition-name: workspace-sidebar;
+}
+.topbar {
+  view-transition-name: workspace-topbar;
+}
+::view-transition-group(workspace-sidebar),
+::view-transition-group(workspace-topbar) {
+  z-index: 100;
+  animation: none;
+}
+::view-transition-old(workspace-sidebar),
+::view-transition-old(workspace-topbar) {
+  display: none;
+}
+::view-transition-new(workspace-sidebar),
+::view-transition-new(workspace-topbar) {
+  animation: none;
+}
+/* Unique automatic names allow simultaneous toasts and opt-in mascot/chat widgets. */
+@supports (view-transition-name: match-element) {
+  .alias-theme-menu,
+  .accounting-journal-toast,
+  [data-workspace-floating] {
+    view-transition-name: match-element;
+    view-transition-class: workspace-floating;
+  }
+}
+::view-transition-group(.workspace-floating) {
+  z-index: 200;
+  animation: none;
+}
+::view-transition-old(.workspace-floating) {
+  display: none;
+}
+::view-transition-new(.workspace-floating) {
+  animation: none;
+}
+.statement-shared-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.statement-shared-identity > div {
+  min-width: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+}

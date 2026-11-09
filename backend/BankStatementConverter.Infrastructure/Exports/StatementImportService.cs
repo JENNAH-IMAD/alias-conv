@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BankStatementConverter.Application;
@@ -10,6 +10,15 @@ namespace BankStatementConverter.Infrastructure.Exports;
 
 public sealed class StatementImportService(AppDbContext db, StatementValidator validator, IExportEngine engine, IFileStorageService storage, IHttpContextAccessor? http = null)
 {
+    private static bool IsBlockingExtractionError(ExportError error) => error.Code is "READING_REVIEW_REQUIRED"
+        or "DATE_MISSING" or "DATE_OUTSIDE_PERIOD" or "MISSING_TRANSACTION_AMOUNT" or "AMBIGUOUS_AMOUNT"
+        or "TOTAL_DEBIT_MISMATCH" or "TOTAL_CREDIT_MISMATCH" or "BALANCE_MISMATCH"
+        || error.Code.StartsWith("EXTRACTION_", StringComparison.Ordinal);
+    public static void EnsureAccountingExportAllowed(StatementDetail detail)
+    {
+        if (detail.Errors.Any(IsBlockingExtractionError))
+            throw new AppException(422, "L’export reste bloqué : corrigez les dates et montants manquants ou incohérents et confirmez les lectures en désaccord.");
+    }
     private string Actor => http?.HttpContext?.User.Identity?.Name ?? WorkspaceIdentity.Name;
     public static readonly JsonSerializerOptions Json = StatementJson.CreateOptions();
     public async Task<PageResult<StatementSummary>> ListAsync(int page, int pageSize, CancellationToken ct)
@@ -30,9 +39,12 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
         var diagnostics = validator.Validate(statement);
         var importWarnings = record.ImportDiagnosticsJson == null ? [] : JsonSerializer.Deserialize<List<ExportError>>(record.ImportDiagnosticsJson, Json)!;
         var raw = record.RawExtractionJson == null ? null : JsonSerializer.Deserialize<PdfTextDocument>(record.RawExtractionJson, Json);
-        var extraction = raw == null ? null : new ExtractionSummary(raw.Method, raw.Pages.Count, raw.Pages.Sum(p => p.Boxes.Count(b => b.Confidence < 0.90)), statement.Transactions.Count == 0, raw.Performance);
-        var coverageErrors = raw?.Method == "HYBRID" ? ExtractionAudit.Errors(statement, raw) : [];
-        return new(record.Id, record.Status, record.Version, record.ValidatedAt, statement, diagnostics.Warnings.Concat(importWarnings).ToList(), diagnostics.Errors.Concat(coverageErrors).ToArray(), record.SourceFileName, extraction, record.ClientId, record.BankAccountId, record.ImportedByName, record.ModifiedByName);
+        var extraction = raw == null ? null : new ExtractionSummary(raw.Method, raw.Pages.Count, raw.Pages.Sum(p => p.Boxes.Count(b => b.Confidence < 0.90)), statement.Transactions.Count == 0, raw.Performance,
+            raw.Pages.Where(p => p.Comparison != null).Select(p => p.Comparison!).ToArray(), raw.ReadingsReviewed,
+            raw.Pages.Select(p => new PdfReadingSource(p.Number, p.ReadingMethod ?? raw.Method, p.Model)).ToArray());
+        var coverageErrors = raw == null ? [] : ExtractionAudit.Errors(statement, raw);
+        var reviewErrors = PdfReadingComparisonBuilder.ReviewErrors(raw, importWarnings);
+        return new(record.Id, record.Status, record.Version, record.ValidatedAt, statement, diagnostics.Warnings.Concat(importWarnings).ToList(), diagnostics.Errors.Concat(coverageErrors).Concat(reviewErrors).ToArray(), record.SourceFileName, extraction, record.ClientId, record.BankAccountId, record.ImportedByName, record.ModifiedByName);
     }
     private static void CheckInput(BankStatement s, bool allowEmpty = false)
     {
@@ -78,6 +90,41 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
         var record = await FindAsync(id, ct);
         return record.RawExtractionJson == null ? throw new AppException(404, "Cet ancien import ne possède pas de texte extrait enregistré. Réimportez le PDF pour le conserver.")
             : JsonSerializer.Deserialize<PdfTextDocument>(record.RawExtractionJson, Json)!;
+    }
+    public async Task<StatementDetail> RereadAsync(Guid id, int version, IAutomaticPdfExtraction extraction, CancellationToken ct)
+    {
+        var snapshot = await FindAsync(id, ct);
+        if (snapshot.Version != version)
+            throw new AppException(409, "Le relevé a changé. Rechargez-le avant de relancer la lecture.");
+        var old = Detail(snapshot).Statement;
+        if (old.Extracts.Count > 0)
+            throw new AppException(422, "Ce relevé possède des extraits enregistrés. Importez une nouvelle copie du PDF pour conserver ces extraits et leurs corrections.");
+        if (snapshot.SourceStorageKey == null)
+            throw new AppException(404, "Le PDF original n’est plus disponible. Réimportez-le.");
+        using var original = storage.Open(snapshot.SourceStorageKey);
+        using var bytes = new MemoryStream();
+        await original.CopyToAsync(bytes, ct);
+        var reading = await extraction.ExtractAsync(bytes.ToArray(), old.BankName, old.BankCode ?? "", old.Currency ?? "MAD", ct);
+        CheckInput(reading.Statement);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var record = await LockAsync(id, version, ct);
+        Store(record, reading.Statement with
+        {
+            Id = id,
+            ConversionType = old.ConversionType,
+            Journal = old.Journal,
+            Account = old.Account,
+            Analytic = old.Analytic,
+            RecordType = old.RecordType,
+            IsValidated = false
+        });
+        record.RawExtractionJson = JsonSerializer.Serialize(reading.RawDocument, Json);
+        record.ImportDiagnosticsJson = JsonSerializer.Serialize(reading.Warnings, Json);
+        record.Version++;
+        record.ModifiedByName = Actor;
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return Detail(record);
     }
     public async Task<StatementDetail> CompleteMetadataAsync(Guid id, int version, CancellationToken ct)
     {
@@ -211,7 +258,7 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
         r.Status = "NEEDS_REVIEW";
         r.ValidatedAt = null;
     }
-    public async Task<StatementDetail> SaveExtractAsync(Guid id, int version, string filterText, CancellationToken ct, string excludeText = "", BankStatement? updatedStatement = null)
+    public async Task<StatementDetail> SaveExtractAsync(Guid id, int version, string filterText, CancellationToken ct, string excludeText = "", BankStatement? updatedStatement = null, Guid? templateId = null, IReadOnlyList<ExportColumnFilter>? columnFilters = null, string? templateFingerprint = null)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var record = await LockAsync(id, version, ct);
@@ -226,7 +273,20 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
         }
         var statement = Detail(record).Statement;
         Validation.Require(statement.Extracts.Count < 100, "Ce relevé possède déjà 100 extraits.");
-        var extract = StatementExtracts.Create(statement, filterText, version, excludeText);
+        StatementExtract extract;
+        if (columnFilters != null)
+        {
+            Validation.Require(templateId.HasValue, "Choisissez un modèle pour filtrer ses colonnes.");
+            var template = await TemplateAsync(templateId!.Value, ct);
+            statement = await AccountingContextAsync(record, statement, template, ct);
+            var fingerprint = ScopedFingerprint(template, Snapshot(template), null, statement);
+            if (templateFingerprint != fingerprint)
+                throw new AppException(409, "Le modèle a changé. Actualisez les colonnes avant d’enregistrer les filtres.");
+            var preview = await engine.PreviewAsync(statement, template, ct);
+            extract = StatementExtracts.CreateByColumns(statement, preview, columnFilters, version, template.Id, fingerprint);
+        }
+        else
+            extract = StatementExtracts.Create(statement, filterText, version, excludeText);
         record.NormalizedJson = JsonSerializer.Serialize(statement with
         {
             Extracts = [.. statement.Extracts, extract]
@@ -306,15 +366,50 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
         await tx.CommitAsync(ct);
         return Detail(record);
     }
+    public async Task<StatementDetail> ReviewReadingsAsync(Guid id, int version, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var record = await LockAsync(id, version, ct);
+        var detail = Detail(record);
+        if (detail.Errors.Any(e => e.Code != "READING_REVIEW_REQUIRED"))
+            throw new AppException(422, "Corrigez les anomalies bloquantes avant de confirmer les valeurs affichées.");
+        var raw = record.RawExtractionJson == null ? null : JsonSerializer.Deserialize<PdfTextDocument>(record.RawExtractionJson, Json);
+        if (raw == null)
+            throw new AppException(422, "Cet import ne possède pas de lectures à vérifier.");
+        record.RawExtractionJson = JsonSerializer.Serialize(raw with
+        {
+            ReadingsReviewed = true
+        }, Json);
+        record.Version++;
+        record.ModifiedByName = Actor;
+        record.Status = "NEEDS_REVIEW";
+        record.ValidatedAt = null;
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return Detail(record);
+    }
     private async Task<ExportTemplate> TemplateAsync(Guid id, CancellationToken ct) => await db.ExportTemplates.AsNoTracking().Include(t => t.Fields).SingleOrDefaultAsync(t => t.Id == id, ct)
         ?? throw new AppException(404, "Modèle d’exportation introuvable.");
     private static string Snapshot(ExportTemplate t) => JsonSerializer.Serialize(new ExportDto(t.Id, t.Name, t.Type, t.Description, t.FileExtension, t.Delimiter, t.Encoding, t.NumberCulture, t.Type != "SAGE100" && t.IncludeHeader, t.IsActive,
         t.Fields.OrderBy(f => f.Position).Select(f => new ExportFieldDto(f.FieldName, f.SourceField, f.Position, f.Format, f.Required)).ToList()), Json);
     private static string Fingerprint(string json) => Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
     private static string TemplateFingerprint(ExportTemplate template, string snapshot) => Fingerprint((template.Type is "SAGEX3" or "SAGE100" ? SageTextCompatibility.ProfileVersion : "") + (template.Type == "SAGE100" ? "Sage100-no-header-v1:" : "") + (template.Type == "SAGEX3" ? SageX3Rows.ProfileVersion : "") + snapshot);
-    private static string ScopedFingerprint(ExportTemplate template, string snapshot, Guid? extractId) => TemplateFingerprint(template, snapshot) + (extractId.HasValue ? ":" + extractId.Value.ToString("N") : "");
+    private static string ScopedFingerprint(ExportTemplate template, string snapshot, Guid? extractId, BankStatement? context = null) =>
+        TemplateFingerprint(template, snapshot) + (extractId.HasValue ? ":" + extractId.Value.ToString("N") : "")
+        + (template.Type is "SAGE100ENTRIES" or "SAGEX3ENTRIES"
+            ? ":entries-v1:" + Fingerprint(JsonSerializer.Serialize(new { context?.BankJournal, context?.BankAccount }, Json)) : "");
+    private async Task<BankStatement> AccountingContextAsync(StatementImport record, BankStatement statement, ExportTemplate template, CancellationToken ct)
+    {
+        if (template.Type is not ("SAGE100ENTRIES" or "SAGEX3ENTRIES"))
+            return statement;
+        var account = record.BankAccountId.HasValue
+            ? await db.BankAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.Id == record.BankAccountId && a.ClientId == record.ClientId, ct)
+            : null;
+        return statement with { BankJournal = account?.Journal, BankAccount = account?.AccountCode };
+    }
     public async Task<PreparedStatementExport> PrepareAsync(Guid id, PrepareStatementExportRequest request, StatementPdfExtractor normalizer, CancellationToken ct)
     {
+        var requestedAt = DateTime.UtcNow;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var record = await LockAsync(id, request.StatementVersion, ct);
         var template = await TemplateAsync(request.TemplateId, ct);
@@ -337,44 +432,55 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
             await db.SaveChangesAsync(ct);
         }
         var detail = Detail(record);
-        var preview = await engine.PreviewAsync(StatementExtracts.ForExport(detail.Statement, request.ExtractId), template, ct);
+        var context = await AccountingContextAsync(record, StatementExtracts.ForExport(detail.Statement, request.ExtractId), template, ct);
+        var preview = await engine.PreviewAsync(context, template, ct);
         preview = preview with
         {
             StatementVersion = record.Version,
             ExtractId = request.ExtractId,
-            TemplateFingerprint = ScopedFingerprint(template, Snapshot(template), request.ExtractId),
-            Warnings = detail.Warnings.Concat(preview.Warnings).DistinctBy(w => (w.Code, w.TransactionSequence, w.FieldName, w.SourceField)).ToList()
+            TemplateFingerprint = ScopedFingerprint(template, Snapshot(template), request.ExtractId, context),
+            Warnings = detail.Warnings.Concat(preview.Warnings).DistinctBy(w => (w.Code, w.TransactionSequence, w.FieldName, w.SourceField)).ToList(),
+            Errors = detail.Errors.Concat(preview.Errors).DistinctBy(e => (e.Code, e.TransactionSequence, e.SourceField)).ToArray()
         };
+        await new StatementTreatmentStore(db).Save(detail, request.ExtractId, "STATEMENT", new { templateId = request.TemplateId, request.ExtractId }, preview, requestedAt, ct);
         await tx.CommitAsync(ct);
         return new(detail, preview);
     }
     public async Task<ExportPreview> PreviewAsync(Guid id, Guid templateId, ExportRequest request, CancellationToken ct)
     {
+        var requestedAt = DateTime.UtcNow;
         var record = await FindAsync(id, ct);
         if (record.Version != request.StatementVersion)
             throw new AppException(409, "Le relevé a changé. Rechargez-le.");
         var template = await TemplateAsync(templateId, ct);
         var detail = Detail(record);
-        var preview = await engine.PreviewAsync(StatementExtracts.ForExport(detail.Statement, request.ExtractId), template, ct);
-        return preview with
+        var context = await AccountingContextAsync(record, StatementExtracts.ForExport(detail.Statement, request.ExtractId), template, ct);
+        var preview = await engine.PreviewAsync(context, template, ct);
+        preview = preview with
         {
             StatementVersion = record.Version,
             ExtractId = request.ExtractId,
-            TemplateFingerprint = ScopedFingerprint(template, Snapshot(template), request.ExtractId)
+            TemplateFingerprint = ScopedFingerprint(template, Snapshot(template), request.ExtractId, context),
+            Errors = detail.Errors.Concat(preview.Errors).DistinctBy(e => (e.Code, e.TransactionSequence, e.SourceField)).ToArray()
         };
+        await new StatementTreatmentStore(db).Save(detail, request.ExtractId, "STATEMENT", new { templateId, request.ExtractId }, preview, requestedAt, ct);
+        return preview;
     }
     public async Task<ExportResult> ExportAsync(Guid id, Guid templateId, ExportRequest request, CancellationToken ct)
     {
+        var requestedAt = DateTime.UtcNow;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var record = await LockAsync(id, request.StatementVersion, ct);
         var template = await TemplateAsync(templateId, ct);
         var snapshot = Snapshot(template);
-        if (request.TemplateFingerprint != null && request.TemplateFingerprint != ScopedFingerprint(template, snapshot, request.ExtractId))
+        var detail = Detail(record);
+        var exportStatement = await AccountingContextAsync(record, StatementExtracts.ForExport(detail.Statement, request.ExtractId), template, ct);
+        if (request.TemplateFingerprint != null && request.TemplateFingerprint != ScopedFingerprint(template, snapshot, request.ExtractId, exportStatement))
             throw new AppException(409, "Le modèle, l’extrait ou les règles d’export ont changé depuis l’aperçu. Affichez un nouvel aperçu.");
         if (request.EditedText != null && request.TemplateFingerprint == null)
             throw new AppException(409, "Affichez un aperçu avant de modifier le texte du fichier.");
-        var source = Detail(record).Statement;
-        var exportStatement = StatementExtracts.ForExport(source, request.ExtractId);
+        EnsureAccountingExportAllowed(detail);
+        var source = detail.Statement;
         var result = await engine.GenerateAsync(exportStatement, template, ct, new(request.AllowErrors, request.EditedText));
         if (request.ExtractId.HasValue)
             result = result with
@@ -395,6 +501,9 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
                     extract.Id,
                     extract.FilterText,
                     extract.ExcludeText,
+                    extract.TemplateId,
+                    extract.ColumnFilters,
+                    extract.TemplateFingerprint,
                     extract.TotalDebit,
                     extract.TotalCredit,
                     extract.Balance
@@ -453,6 +562,14 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
                     ActorId = http?.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
                     Version = record.Version
                 });
+                var remembered = await engine.PreviewAsync(exportStatement, template, ct);
+                remembered = remembered with {
+                    StatementVersion = record.Version, ExtractId = request.ExtractId,
+                    TemplateFingerprint = ScopedFingerprint(template, Snapshot(template), request.ExtractId, exportStatement),
+                    Errors = result.Errors, Warnings = result.Warnings,
+                    Text = result.TextEdited ? request.EditedText : remembered.Text
+                };
+                await new StatementTreatmentStore(db).Save(Detail(record), request.ExtractId, "STATEMENT", new { templateId, request.ExtractId }, remembered, requestedAt, ct);
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
             }
@@ -556,6 +673,15 @@ public sealed class StatementImportService(AppDbContext db, StatementValidator v
         await db.SaveChangesAsync(ct);
     }
     public async Task<ExportJob> ArchivedJobAsync(Guid id, Guid jobId, CancellationToken ct) => await db.ExportJobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId && j.StatementId == id, ct) ?? throw new AppException(404, "Export archivé introuvable.");
+    public async Task DeleteArchivedExportAsync(Guid statementId, Guid jobId, CancellationToken ct)
+    {
+        var job = await db.ExportJobs.SingleOrDefaultAsync(j => j.Id == jobId && j.StatementId == statementId, ct)
+            ?? throw new AppException(404, "Export archivé introuvable.");
+        foreach (var key in new[] { job.StorageKey, job.StandardStorageKey }.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct())
+            db.PendingFileDeletions.Add(new() { StorageKey = key! });
+        db.ExportJobs.Remove(job);
+        await db.SaveChangesAsync(ct);
+    }
     public async Task<(byte[] Content, string FileName, string MimeType)> ArchivedDownloadAsync(Guid id, Guid jobId, bool standard, CancellationToken ct)
     {
         var job = await ArchivedJobAsync(id, jobId, ct);

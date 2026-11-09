@@ -41,7 +41,7 @@ export function BankDialog({
         e.stopPropagation();
         if (!busy) onClose();
       }}
-      className={`app-dialog ${wide ? 'wide-dialog' : ''} ${className ?? ''}`}
+      className={`app-dialog fern-dialog-in ${wide ? 'wide-dialog' : ''} ${className ?? ''}`}
     >
       <div className="dialog-header mb-6 flex items-start justify-between gap-4">
         <h2 className="text-xl font-semibold">{title}</h2>
@@ -72,6 +72,7 @@ export function BankEditor({
   onClose: () => void;
   onSaved: (bank: Bank) => void;
 }) {
+  const catalog = useApi<{ name: string; code: string }[]>('/banks/catalog');
   const [name, setName] = useState(initial?.name || '');
   const [code, setCode] = useState(initial?.code || '');
   const [description, setDescription] = useState(initial?.description || '');
@@ -108,29 +109,45 @@ export function BankEditor({
       <form onSubmit={save} className="space-y-5">
         <fieldset disabled={busy} className="space-y-5">
           <label className="block text-sm">
-            Nom de la banque *
-            <Input
+            Banque conventionnelle *
+            <select
+              className={input}
               autoFocus
               required
-              maxLength={200}
-              className={input}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex. Banque Populaire"
-            />
-          </label>
-          <label className="block text-sm">
-            Code unique *
-            <Input
-              required
-              maxLength={30}
-              className={input}
+              disabled={busy || catalog.loading || !!catalog.error}
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="Ex. BP"
-            />
+              onChange={(event) => {
+                const bank = catalog.data?.find((item) => item.code === event.target.value);
+                setCode(bank?.code ?? '');
+                setName(bank?.name ?? '');
+              }}
+            >
+              <option value="">
+                {catalog.loading ? 'Chargement du catalogue…' : 'Choisir une banque marocaine…'}
+              </option>
+              {initial && !catalog.data?.some((bank) => bank.code === initial.code) && (
+                <option value={initial.code}>{initial.name}</option>
+              )}
+              {catalog.data?.map((bank) => (
+                <option key={bank.code} value={bank.code}>
+                  {bank.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {catalog.error && (
+            <p role="alert" className="text-destructive">
+              {catalog.error}{' '}
+              <button type="button" className="underline" onClick={catalog.reload}>
+                Réessayer
+              </button>
+            </p>
+          )}
+          <label className="block text-sm">
+            Code bancaire
+            <Input aria-label="Code bancaire" className={input} readOnly value={code} />
             <span className="mt-2 block opacity-70">
-              Lettres, chiffres, tirets et underscores. Ce code identifie la banque.
+              Renseigné automatiquement depuis le catalogue.
             </span>
           </label>
           <label className="block text-sm">
@@ -155,7 +172,9 @@ export function BankEditor({
           <Button type="button" disabled={busy} onClick={onClose} variant="outline">
             Annuler
           </Button>
-          <Button disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          <Button disabled={busy || catalog.loading || !!catalog.error || !code}>
+            {busy ? 'Enregistrement…' : 'Enregistrer'}
+          </Button>
         </div>
       </form>
     </BankDialog>

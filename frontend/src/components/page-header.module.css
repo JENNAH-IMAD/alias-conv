@@ -1,0 +1,144 @@
+/* Every page header owns this presentation, independent of route stylesheet order. */
+.header {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px 32px;
+  width: 100%;
+  min-width: 0;
+  min-height: 196px;
+  margin: 0;
+  padding: 28px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--hero-background);
+  box-shadow: var(--shadow);
+}
+.copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.text {
+  min-width: 0;
+}
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--link);
+  font-family: var(--font-inter), sans-serif;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.4;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.eyebrow::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  content: '';
+}
+.title {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-manrope), var(--font-inter), sans-serif;
+  font-size: clamp(28px, 2.15vw, 36px);
+  font-weight: 750;
+  line-height: 1.25;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.description {
+  max-width: 900px;
+  margin: 12px 0 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.65;
+}
+.actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 400px;
+  min-width: 0;
+}
+.art {
+  position: absolute;
+  z-index: 0;
+  right: 48px;
+  bottom: -56px;
+  width: 190px;
+  height: 190px;
+  color: var(--primary);
+  opacity: 0.045;
+  transform: rotate(-15deg);
+  pointer-events: none;
+}
+.footer {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.header .footer :global(.conversion-hero-steps) {
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin: 0;
+  font-size: 12px;
+}
+@media (max-width: 1100px) {
+  .header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .actions {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+}
+@media (max-width: 767px) {
+  .header {
+    min-height: 0;
+    padding: 22px 20px;
+    border-radius: 16px;
+  }
+  .title {
+    font-size: 26px;
+    text-wrap: initial;
+  }
+  .description {
+    font-size: 13px;
+  }
+  .actions {
+    width: 100%;
+  }
+  .header .actions > :global(.ui-button) {
+    width: 100%;
+    min-height: 44px;
+  }
+  .art {
+    right: -24px;
+    width: 150px;
+    height: 150px;
+  }
+  .header .footer :global(.conversion-hero-steps) {
+    gap: 12px;
+    font-size: 11px;
+  }
+  .header .footer :global(.conversion-hero-steps) > svg {
+    display: none;
+  }
+}

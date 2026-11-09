@@ -2,19 +2,6 @@
 import { useSyncExternalStore } from 'react';
 import { ThemeProvider as NextThemeProvider, useTheme as useNextTheme } from 'next-themes';
 const subscribe = () => () => {};
-function ThemeRoot({ children }: { children: React.ReactNode }) {
-  const { resolvedTheme } = useNextTheme();
-  const mounted = useSyncExternalStore(
-    subscribe,
-    () => true,
-    () => false,
-  );
-  return (
-    <div className="theme-root" data-theme={mounted ? resolvedTheme : undefined}>
-      {children}
-    </div>
-  );
-}
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <NextThemeProvider
@@ -24,7 +11,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       enableSystem
       disableTransitionOnChange
     >
-      <ThemeRoot>{children}</ThemeRoot>
+      <div className="theme-root">{children}</div>
     </NextThemeProvider>
   );
 }

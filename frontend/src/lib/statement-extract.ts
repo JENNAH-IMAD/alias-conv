@@ -1,18 +1,33 @@
-﻿import type { Money, StatementTransaction } from '@/services/statement-exports';
+﻿import type {
+  ExportColumnFilter,
+  ExportPreview,
+  Money,
+  StatementTransaction,
+} from '@/services/statement-exports';
 
 export function normalizeFilterText(text: string) {
-  return text.normalize('NFD').replace(/\p{M}/gu, '').normalize('NFC').toLowerCase();
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/\s/gu, ' ');
 }
 
-export function filterStatementRows(rows: StatementTransaction[], text: string, excludeText = '') {
-  const filter = normalizeFilterText(text.trim());
-  const exclusions = excludeText
-    .split(/[,;\n\r]/)
-    .map((value) => normalizeFilterText(value.trim()))
-    .filter(Boolean);
-  return rows.filter((row) => {
-    const description = normalizeFilterText(row.description ?? '');
-    return description.includes(filter) && !exclusions.some((value) => description.includes(value));
+export function exportFilterRows(preview: ExportPreview, filters: ExportColumnFilter[]) {
+  const active = filters
+    .filter((filter) => filter.value.trim())
+    .map((filter) => ({ ...filter, value: normalizeFilterText(filter.value.trim()) }));
+  return preview.rows.flatMap((cells, index) => {
+    if ((preview.rowKinds?.[index] ?? 'TRANSACTION') !== 'TRANSACTION') return [];
+    const sequence = preview.rowSequences[index];
+    if (sequence == null) return [];
+    const columns = preview.rowColumnIndices?.[index] ?? cells.map((_, column) => column);
+    const matches = active.every((filter) => {
+      const cell = columns.indexOf(filter.columnIndex);
+      return cell >= 0 && normalizeFilterText(cells[cell]).includes(filter.value);
+    });
+    return matches ? [{ cells, columns, sequence }] : [];
   });
 }
 

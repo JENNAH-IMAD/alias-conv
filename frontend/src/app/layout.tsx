@@ -16,8 +16,17 @@ import '../styles/history-design.css';
 import '../styles/user-editor.css';
 import '../styles/conversion-entry.css';
 import '../styles/professional-layout.css';
+import '../styles/conversion-review.css';
+import '../styles/settings.css';
+import '../styles/login.css';
+import '../styles/page-transitions.css';
+import '../styles/fern-animations.css';
+import '../styles/dashboard-overview.css';
+import '../styles/workspace-design-system.css';
+import '../styles/profile.css';
 import { AuthProvider } from '@/components/auth-context';
 import { AppShell } from '@/components/app-shell';
+import { DetailTransitionProvider } from '@/components/route-detail-transition';
 import { ThemeProvider } from '@/components/theme-context';
 const inter = localFont({
   src: '../../assets/fonts/Inter-Latin.woff2',
@@ -50,7 +59,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full" suppressHydrationWarning>
         <ThemeProvider>
           <AuthProvider>
-            <AppShell>{children}</AppShell>
+            <DetailTransitionProvider>
+              <AppShell>{children}</AppShell>
+            </DetailTransitionProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

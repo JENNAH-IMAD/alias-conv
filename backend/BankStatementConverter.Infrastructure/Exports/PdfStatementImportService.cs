@@ -14,6 +14,7 @@ public sealed class PdfStatementImportService(AppDbContext db, IFileStorageServi
         Validation.Text(Path.GetFileName(fileName.Replace('\\', '/')), "Nom du fichier", 2000);
         Validation.Require(currency.Length == 3 && currency.All(char.IsAsciiLetterUpper), "La devise doit comporter trois lettres majuscules.");
         var bank = await db.Banks.AsNoTracking().SingleOrDefaultAsync(b => b.Id == bankId, ct) ?? throw new AppException(400, "Choisissez la banque du relevé.");
+        Validation.Require(MoroccanBankCatalog.IsSelectable(bank.Name, bank.Code), "Choisissez une banque du catalogue des banques conventionnelles.");
         Validation.Require(clientId.HasValue == bankAccountId.HasValue, "Choisissez ensemble le client et son compte bancaire.");
         if (bankAccountId.HasValue)
             Validation.Require(await db.BankAccounts.AnyAsync(a => a.Id == bankAccountId && a.ClientId == clientId && a.BankId == bankId && a.Currency == currency, ct), "Le compte doit correspondre au client, à la banque et à la devise sélectionnés.");

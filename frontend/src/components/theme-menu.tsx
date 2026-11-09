@@ -1,73 +1,87 @@
 'use client';
+import Link from 'next/link';
 import { DropdownMenu } from 'radix-ui';
-import { Check, ChevronDown, LogOut, LoaderCircle, Moon, Sun } from 'lucide-react';
-import Image from 'next/image';
+import { ChevronDown, CircleUserRound, LoaderCircle, LogOut, Moon, Sun, UserRound } from 'lucide-react';
 import { useTheme } from './theme-context';
 import { useAuth } from './auth-context';
 
+export function ThemeToggle() {
+  const { setTheme, isLightMode } = useTheme();
+  const nextTheme = isLightMode ? 'dark' : 'light';
+  const LabelIcon = isLightMode ? Moon : Sun;
+  return (
+    <button
+      type="button"
+      className="alias-menu-trigger mini-menu-trigger appearance-toggle"
+      aria-label={`Activer le mode ${isLightMode ? 'sombre' : 'clair'}`}
+      title={`Activer le mode ${isLightMode ? 'sombre' : 'clair'}`}
+      onClick={() => setTheme(nextTheme)}
+    >
+      <LabelIcon size={17} aria-hidden="true" />
+    </button>
+  );
+}
+
 export function ThemeMenu() {
-  const { isLightMode, setTheme } = useTheme();
-  const { logout, loggingOut, logoutError } = useAuth();
+  const { user, logout, loggingOut, logoutError } = useAuth();
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
-        className="alias-menu-trigger mini-menu-trigger"
-        aria-label="Apparence et session"
-        title="Apparence et session"
+        type="button"
+        className="alias-menu-trigger mini-menu-trigger account-menu-trigger"
+        aria-label="Ouvrir le menu du compte"
+        title="Mon compte"
       >
-        <Image src="/alias-icon.svg" alt="" width={20} height={20} />
+        <span className="account-menu-avatar" aria-hidden="true">
+          {user?.name.trim().charAt(0).toLocaleUpperCase() || <CircleUserRound size={17} />}
+        </span>
         <ChevronDown size={12} aria-hidden="true" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           className="alias-theme-menu mini-theme-menu"
-          aria-label="Apparence et session"
+          aria-label="Menu du compte"
           align="end"
           sideOffset={8}
           collisionPadding={12}
         >
-          <DropdownMenu.Label className="alias-menu-heading">Apparence</DropdownMenu.Label>
-          <DropdownMenu.RadioGroup value={isLightMode ? 'light' : 'dark'} onValueChange={setTheme}>
-            {[
-              { value: 'light', label: 'Clair', icon: Sun },
-              { value: 'dark', label: 'Sombre', icon: Moon },
-            ].map(({ value, label, icon: Icon }) => (
-              <DropdownMenu.RadioItem
-                key={value}
-                value={value}
-                className="alias-theme-item"
-                onSelect={(event) => event.preventDefault()}
-              >
-                <span className="alias-theme-icon">
-                  <Icon size={16} aria-hidden="true" />
-                </span>
-                <strong>{label}</strong>
-                <DropdownMenu.ItemIndicator className="alias-theme-check">
-                  <Check size={15} aria-hidden="true" />
-                </DropdownMenu.ItemIndicator>
-              </DropdownMenu.RadioItem>
-            ))}
-          </DropdownMenu.RadioGroup>
+          {user && (
+            <DropdownMenu.Label className="account-menu-identity">
+              <strong>{user.name}</strong>
+              <span>{user.email}</span>
+            </DropdownMenu.Label>
+          )}
           <DropdownMenu.Separator className="alias-menu-separator" />
-          <DropdownMenu.Item
-            className="mini-logout-item"
-            disabled={loggingOut}
-            onSelect={(event) => {
-              event.preventDefault();
-              void logout();
-            }}
-          >
-            {loggingOut ? (
-              <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
-            ) : (
-              <LogOut size={16} aria-hidden="true" />
-            )}
-            {loggingOut ? 'Déconnexion en cours' : 'Se déconnecter'}
+          <DropdownMenu.Item asChild className="account-menu-item">
+            <Link href="/profile">
+              <UserRound size={16} aria-hidden="true" />
+              Gérer mon profil
+            </Link>
           </DropdownMenu.Item>
-          {logoutError && (
-            <p role="alert" className="mini-menu-error">
-              {logoutError}
-            </p>
+          {user && (
+            <>
+              <DropdownMenu.Separator className="alias-menu-separator" />
+              <DropdownMenu.Item
+                className="mini-logout-item"
+                disabled={loggingOut}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void logout();
+                }}
+              >
+                {loggingOut ? (
+                  <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <LogOut size={16} aria-hidden="true" />
+                )}
+                {loggingOut ? 'Déconnexion en cours' : 'Se déconnecter'}
+              </DropdownMenu.Item>
+              {logoutError && (
+                <p role="alert" className="mini-menu-error">
+                  {logoutError}
+                </p>
+              )}
+            </>
           )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

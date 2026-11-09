@@ -5,6 +5,7 @@ import { ClientAvatar, ClientPhotoEditor } from '@/components/client-photo';
 import { Camera, Landmark, Plus, RefreshCw, Pencil, Trash2, ArrowUpRight } from 'lucide-react';
 import { Pagination } from '@/components/ui/pagination';
 import { PageHeader } from '@/components/page-header';
+import { BankingSectionNavigation } from '@/components/banking-section-navigation';
 import { LoadState } from '@/components/ui/load-state';
 import { pageTheme } from '@/components/page-theme';
 import { useEffect, useState } from 'react';
@@ -35,6 +36,7 @@ export default function BanksPage() {
   const theme = pageTheme;
   return (
     <div className={`${theme.page} banks-page`}>
+      <BankingSectionNavigation active="banks" />
       {logoBank && (
         <ClientPhotoEditor
           resource="banks"
@@ -51,7 +53,7 @@ export default function BanksPage() {
           initial={editing}
           onClose={() => setEditing(undefined)}
           onSaved={(saved) => {
-            if (!editing) setLogoBank(saved);
+            if (!editing && !saved.logoVersion) setLogoBank(saved);
             setNotice(editing ? 'Banque modifiée avec succès.' : 'Banque ajoutée avec succès.');
             reload();
           }}
@@ -72,8 +74,8 @@ export default function BanksPage() {
       <PageHeader
         icon={Landmark}
         eyebrow="Référentiel"
-        title="Banques"
-        description="Gérez vos banques, consultez leurs comptes."
+        title="Banques marocaines"
+        description="Banques conventionnelles retenues pour vos conversions. Consultez leurs comptes et gérez leurs logos."
         actions={
           <Button
             permission="banks.write"

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using BankStatementConverter.Application.Exports;
 
@@ -7,7 +6,7 @@ namespace BankStatementConverter.Infrastructure.Exports;
 internal static class PageLayoutText
 {
     // Keep columns apart: identical values in different cells are not duplicates.
-    public static string Generate(PdfTextPage page, bool positions = false)
+    public static string Generate(PdfTextPage page)
     {
         var rows = new List<List<PdfTextBox>>();
         foreach (var box in page.Boxes.Where(box => !string.IsNullOrWhiteSpace(box.Text)).OrderBy(box => (box.Top + box.Bottom) / 2).ThenBy(box => box.Left))
@@ -22,10 +21,8 @@ internal static class PageLayoutText
         var text = new StringBuilder();
         foreach (var row in rows)
         {
-            if (positions)
-                text.Append(CultureInfo.InvariantCulture, $"[page={page.Number} y={row[0].Top / page.Height:F3}] ");
-            text.AppendLine(string.Join(positions ? " | " : "\t", row.OrderBy(box => box.Left).Select(box =>
-                (positions ? $"[x={(box.Left / page.Width).ToString("F3", CultureInfo.InvariantCulture)}] " : "") + box.Text.Replace("\0", "", StringComparison.Ordinal))));
+            text.AppendLine(string.Join("\t", row.OrderBy(box => box.Left)
+                .Select(box => box.Text.Replace("\0", "", StringComparison.Ordinal))));
         }
         return text.ToString();
     }

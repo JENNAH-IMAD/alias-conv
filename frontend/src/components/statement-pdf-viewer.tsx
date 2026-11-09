@@ -188,24 +188,21 @@ export function StatementPdfViewer({
   function navigate(page: number) {
     setPageNumber(page);
     setSelected([]);
+    container.current?.scrollTo({ top: 0, left: 0 });
     onSelection(null);
   }
   return (
     <section
       className="statement-pdf-viewer"
       aria-busy={loading}
-      aria-label={readOnly ? 'Relevé bancaire converti' : 'Relevé bancaire original'}
+      aria-label={readOnly ? 'Document PDF converti' : 'Document PDF original'}
     >
       <div className="pdf-viewer-heading">
         <div>
-          <h2>{readOnly ? 'Votre relevé converti' : 'Votre relevé original'}</h2>
-          <p>
-            {readOnly
-              ? 'Copie structurée du relevé source, ou rapport des mouvements sélectionnés.'
-              : selectable
-                ? 'Cliquez sur un texte pour le sélectionner. Plusieurs clics combinent les valeurs.'
-                : 'Consultez le document source. Corrigez les données directement dans le tableau.'}
-          </p>
+          <h2>{readOnly ? 'Aperçu du PDF converti' : 'Aperçu du PDF original'}</h2>
+          {!readOnly && selectable && (
+            <p>Cliquez sur un texte pour le sélectionner. Plusieurs clics combinent les valeurs.</p>
+          )}
         </div>
       </div>
       <div className="pdf-viewer-toolbar">
@@ -219,7 +216,7 @@ export function StatementPdfViewer({
         >
           <ChevronLeft />
         </Button>
-        <span>
+        <span aria-live="polite">
           Page {pageNumber} / {pdf?.numPages ?? '…'}
         </span>
         <Button
@@ -258,6 +255,7 @@ export function StatementPdfViewer({
           size="icon-sm"
           variant="outline"
           aria-label="Ajuster le PDF à la largeur"
+          title="Ajuster à la largeur"
           onClick={() => setZoom(1)}
         >
           <RotateCcw />
@@ -287,18 +285,20 @@ export function StatementPdfViewer({
         ref={container}
         className="pdf-viewer-scroll"
         tabIndex={0}
-        aria-label="Document PDF avec sélection des textes"
+        aria-label={
+          selectable && !readOnly ? 'Document PDF avec sélection des textes' : 'Document PDF'
+        }
       >
         {loading && !error && (
           <p role="status" className="pdf-viewer-loading pdf-render-status">
-            Affichage du relevé…
+            Affichage du PDF…
           </p>
         )}
         <div className="pdf-page" style={{ width: size.width, height: size.height }}>
           <canvas
             ref={canvas}
             style={{ width: size.width, height: size.height }}
-            aria-label={`Page ${pageNumber} du relevé bancaire`}
+            aria-label={`Page ${pageNumber} du document PDF`}
           />
           {!loading &&
             !error &&

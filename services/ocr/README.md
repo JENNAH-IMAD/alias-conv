@@ -1,9 +1,40 @@
 # Lecture PaddleOCR pour Alias
 
-Le compte **Admin** peut désormais saisir ou remplacer le jeton depuis
+## Chaîne locale de traitement
+
+Le mode `AUTO` avec `LOCAL` utilise uniquement les moteurs de lecture locaux. Chaque nouvelle
+lecture repart des octets du PDF original. Seuls les poids des modèles sont réutilisés.
+
+1. Le backend lit le texte natif, ses positions et les zones en image. Une lecture
+   native complète et cohérente n’est pas envoyée inutilement à l’OCR.
+2. Les pages non résolues passent au service Python : rendu des pixels, détection de
+   mise en page `PP-DocLayout-M`, OCR `PP-OCRv6` et reconstruction `PP-StructureV3`.
+3. Le service renvoie les blocs OCR, leurs positions et scores, ainsi que des grilles
+   de cellules et les limites des tableaux. Les cellules fusionnées sont développées
+   sans dupliquer les valeurs. Les modules bancaires ne reçoivent pas le HTML brut.
+4. Les cellules financières douteuses sont relues depuis leurs pixels. Une correction
+   reconnue est propagée à la grille seulement si sa source est non ambiguë.
+5. Le backend compare l’interprétation des cellules et celle des positions du même
+   document. Il retient la lecture la plus complète, avec contrôle des dates, montants,
+   couverture des pages et équation des soldes. Les divergences financières entre
+   deux lectures cohérentes demandent une confirmation explicite.
+6. Le PDF converti reconstruit les champs source en tableau. Les exports appliquent
+   ensuite le modèle choisi aux mouvements reconnus et corrigés.
+
+`OCR_PIPELINE=structure` est le défaut ; `OCR_PIPELINE=text` permet de diagnostiquer
+le seul OCR. `OCR_LAYOUT_MODEL` et `OCR_MODEL_SIZE` choisissent les modèles locaux.
+Le premier lancement télécharge leurs poids. `/health` expose `layout_ready` et la
+version de chaîne `local-layout-v1`. Si la structure échoue, l’OCR positionnel reste
+actif et une alerte indique le repli : aucun résultat ancien n’est substitué.
+
+Le mode automatique utilise PaddleOCR local ou PaddleOCR AI Studio selon
+`Hybrid__AutoPaddleProvider`. Aucun autre moteur de secours distant n’est appelé.
+La chaîne locale n’utilise aucun jeton et conserve les contrôles sur les valeurs
+illisibles ou contradictoires.
+
+Le compte **Admin** peut saisir ou remplacer le jeton PaddleOCR AI Studio depuis
 **Configuration OCR** dans l’application, sans redémarrage. Le jeton n’est jamais
 renvoyé au navigateur et les réglages sont enregistrés chiffrés côté serveur.
-Voir [la saisie du jeton et ses règles de conservation](../../docs/historique-et-configuration-ocr.md).
 Ces réglages prennent priorité sur les fichiers de configuration décrits ci-dessous.
 
 ## API PP-OCRv6
@@ -35,6 +66,44 @@ La configuration de PP-OCRv6 peut être vérifiée manuellement dans l’applica
 Le test réel complet reste impossible tant que ce blocage réseau persiste.
 
 Source : [API officielle PP-OCRv6](https://ai.baidu.com/ai-doc/AISTUDIO/7mfz6dgx9).
+
+## Relevés scannés avec colonnes étroites
+
+Le parcours conseillé est `Ocr:Provider=AUTO` avec `AutoPaddleProvider=LOCAL` dans
+Configuration OCR. Le texte natif fiable est conservé ; les pages scannées ou
+incomplètes passent à PaddleOCR local et à PP-StructureV3. Les pages restant
+illisibles sont signalées pour contrôle ; aucune lecture externe supplémentaire
+n’est déclenchée.
+
+Les deux lectures et les différences de dates, libellés, références et montants
+sont conservées. Une divergence n’écrase pas une première lecture saine : elle
+apparaît dans « Lecture du document ». L’utilisateur corrige les valeurs puis
+confirme explicitement sa vérification. Les dates manquantes/hors période, montants
+manquants et désaccords non vérifiés bloquent les exports comptables, même avec
+l’option de téléchargement avec erreurs. Les extraits suivent les mêmes règles.
+
+La reconnaissance des tableaux rapproche les intitulés de colonnes sur plusieurs
+niveaux, y compris les en-têtes bilingues et les intitulés arabes reconnus. Elle
+vérifie la présence de lignes datées sous les colonnes. Le sens des montants suit
+les titres débit/crédit, même lorsque leur ordre est inversé. Ces règles sont
+communes aux relevés et aux extraits ; aucun modèle propre à une banque n’est requis.
+
+Le moteur local relit également les cellules financières dont le séparateur décimal
+a disparu dans le texte OCR : la correction doit être reconnue sur l’image de la
+cellule avec une confiance suffisante, jamais déduite de l’équilibre des soldes.
+Les données illisibles, les pages manquantes et les désaccords restent signalés.
+
+Le moteur local relit les dates sous l’en-tête compact `OPER VALEUR` lorsque les
+deux colonnes se touchent. Il retire les traits verticaux du recadrage et reconnaît
+chaque paire de dates avant l’adaptation bancaire. Une décimale tronquée par une
+bordure est relue directement dans son image, sans être complétée par calcul.
+Ces reprises ciblées concernent le fournisseur `LOCAL` (et sa sélection en mode
+`AUTO`) ; elles ne modifient pas les réponses des API OCR distantes.
+
+Le lecteur bancaire reconnaît ces intitulés CIH, les dates des soldes et le compte
+dans la grille RIB. Il garde les deux dates séparées et n’utilise jamais le montant
+du premier mouvement comme solde initial illisible. Les résultats OCR restent à
+comparer au scan, notamment pour les libellés et les petits caractères.
 
 ## API officielle PaddleOCR-VL-1.6 (même moteur que le site AI Studio)
 
@@ -111,7 +180,7 @@ Sources officielles : [API et SDK PaddleOCR](https://github.com/PaddlePaddle/Pad
 ## Moteur local PP-OCRv6
 
 Pour ce mode, choisir `Ocr:Provider=AUTO` avec `Hybrid:AutoPaddleProvider=LOCAL`,
-ou `Ocr:Provider=LOCAL` pour ne pas utiliser l'assistance OpenRouter. Le texte natif est lu en priorité ;
+ou `Ocr:Provider=LOCAL` pour utiliser directement le moteur local. Le texte natif est lu en priorité ;
 PaddleOCR local est utilisé pour les scans et les tableaux natifs non reconnus.
 
 Le service effectue seulement l’étape de lecture : **PDF → images → blocs de texte**.
@@ -163,7 +232,7 @@ Le lancement Windows et Docker utilise deux processus par défaut, pour permettr
 des lectures parallèles. `start.ps1 -Workers 1` réduit la consommation mémoire ;
 `OCR_CPU_THREADS` règle les threads par processus (deux par défaut). L'API possède
 une file d'attente asynchrone et deux créneaux OCR configurables ; voir le
-[guide multi-utilisateur](../../docs/multi-user-conversions.md).
+[guide de fonctionnement des conversions](../../README.md#traitement-des-relevés-et-extraits).
 Un fichier vide, corrompu ou protégé
 retourne une erreur explicite.
 
@@ -174,11 +243,14 @@ résolution du rendu PDF. Le point `/health` indique la taille du modèle charg�
 Une police PDF mal encodée peut déclencher l'OCR même sans image raster dans le PDF.
 
 Le paramètre multipart facultatif `pages` sélectionne les numéros d'origine à lire.
-Chaque page réussie est conservée dix minutes dans un cache mémoire de 32 Mo par
-processus, indexé par les octets exacts du PDF et les réglages du moteur. Les documents
-différents ne partagent pas leurs valeurs. Les données OCR ne sont pas mises en cache
-sur disque. Une annulation de la connexion arrête les pages suivantes après la page
-en cours ; les pages déjà réussies peuvent être réutilisées lors d'une relance.
+Chaque import ou nouvelle lecture relance les moteurs nécessaires sur le PDF original,
+même si ce fichier a déjà été traité. Aucun résultat de page PaddleOCR
+n’est réutilisé entre traitements. Seuls les modèles OCR chargés restent en mémoire.
+Une annulation arrête les pages suivantes
+après la page en cours ; une relance recommence la lecture.
+Le bouton **Nouvelle lecture du PDF** remplace les mouvements et corrections de la
+version courante. Changer uniquement le modèle d’exportation conserve les données
+revues, sans déclencher une nouvelle extraction.
 
 ## Adaptation et limites
 

@@ -4,6 +4,11 @@ namespace BankStatementConverter.Domain;
 // Input from an extraction/normalization system. No PDF or OCR dependencies.
 public sealed record BankStatement
 {
+    // Export-only context loaded from the selected bank account, never accepted from JSON/OCR.
+    [JsonIgnore]
+    public string? BankJournal { get; init; }
+    [JsonIgnore]
+    public string? BankAccount { get; init; }
     public string ConversionType { get; init; } = "STATEMENT";
     public Guid Id { get; init; } = Guid.NewGuid();
     public string BankName { get; init; } = "";
@@ -114,7 +119,10 @@ public sealed record StatementExtract(Guid Id, string FilterText, DateTime Creat
     [property: JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)] decimal TotalDebit,
     [property: JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)] decimal TotalCredit,
     [property: JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)] decimal Balance,
-    string ExcludeText = "");
+    string ExcludeText = "", Guid? TemplateId = null,
+    IReadOnlyList<ExportColumnFilter>? ColumnFilters = null, string? TemplateFingerprint = null);
+
+public sealed record ExportColumnFilter(int ColumnIndex, string Value);
 
 public sealed record StatementTransaction
 {

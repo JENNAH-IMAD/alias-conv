@@ -307,7 +307,7 @@
 }
 .alias-menu-trigger:focus-visible,
 .alias-theme-item:focus-visible {
-  outline: 2px solid #29a6ce;
+  outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
 .alias-theme-menu {
@@ -345,7 +345,7 @@
   background: var(--surface-alt);
 }
 .alias-theme-item[data-state='checked'] {
-  background: rgb(41 166 206 / 10%);
+  background: var(--accent);
 }
 .alias-theme-icon,
 .workspace-mark {
@@ -357,7 +357,7 @@
   border: 1px solid rgb(41 166 206 / 20%);
   border-radius: 12px;
   background: rgb(41 166 206 / 8%);
-  color: #29a6ce;
+  color: var(--link);
 }
 .alias-theme-item strong {
   display: block;
@@ -372,7 +372,7 @@
 }
 .alias-theme-check {
   margin-left: auto;
-  color: #29a6ce;
+  color: var(--link);
 }
 .alias-menu-separator {
   margin: 9px 0;
@@ -494,6 +494,58 @@
   gap: 7px;
   border-radius: 10px;
 }
+.appearance-toggle {
+  width: 36px;
+  justify-content: center;
+  padding-inline: 0;
+  color: var(--foreground);
+}
+.account-menu-trigger {
+  min-width: 54px;
+}
+.account-menu-avatar {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--link);
+  font-size: 12px;
+  font-weight: 700;
+}
+.account-menu-identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px 10px;
+}
+.account-menu-identity strong,
+.account-menu-identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-menu-identity strong { font-size: 13px; }
+.account-menu-identity span { color: var(--muted-foreground); font-size: 11px; font-weight: 400; }
+.account-menu-item,
+.account-menu-item > a {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  color: var(--foreground);
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+  outline: none;
+}
+.account-menu-item[data-highlighted],
+.account-menu-item:hover { background: var(--surface-alt); }
+.account-menu-item:focus-visible,
+.account-menu-item > a:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .alias-theme-menu.mini-theme-menu {
   width: 204px;
   padding: 6px;

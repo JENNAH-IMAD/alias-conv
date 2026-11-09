@@ -1,14 +1,16 @@
 'use client';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { CheckCircle2, FileText, Upload, ShieldCheck, FolderOpen } from 'lucide-react';
 import { ConversionSteps } from './conversion-steps';
 import { ProcessingProgress } from './processing-progress';
 import { Button } from './ui/button';
+import { PageHeader } from './page-header';
 import { Account, Bank, Client, request } from '@/services/api';
 import { useAll } from '@/services/use-api';
 import { StatementDetail } from '@/services/statement-exports';
 import { validatePdf } from '@/lib/pdf-validation';
 import { createUuid } from '@/lib/create-uuid';
+import type { ConversionIntent } from '@/lib/conversion-intent';
 
 export function StatementImportDialog({
   onClose,
@@ -17,23 +19,28 @@ export function StatementImportDialog({
   initialConversionType = 'STATEMENT',
 }: {
   onClose: () => void;
-  onImported: (detail: StatementDetail) => void;
+  onImported: (detail: StatementDetail, clientId?: string, intent?: ConversionIntent) => void;
   initialClientId?: string;
-  initialConversionType?: 'STATEMENT' | 'EXTRACT';
+  initialConversionType?: ConversionIntent;
 }) {
   const [file, setFile] = useState<File | null>(null);
-  const [conversionType, setConversionType] = useState(initialConversionType);
+  const [conversionType, setConversionType] = useState<ConversionIntent>(
+    initialConversionType === 'ACCOUNTING' ? 'STATEMENT' : initialConversionType,
+  );
   const [bankId, setBankId] = useState('');
   const [currency, setCurrency] = useState('MAD');
   const [clientId, setClientId] = useState(initialClientId);
   const [accountId, setAccountId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [processingId, setProcessingId] = useState('');
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
+  const importController = useRef<AbortController | null>(null);
   const banks = useAll<Bank>('/banks');
   const clients = useAll<Client>('/clients');
   const accounts = useAll<Account>('/bank-accounts');
+  const finishCancellation = useCallback(() => setCancelling(false), []);
   function choose(value: File | undefined) {
     const invalid = value ? validatePdf(value) : null;
     setError(invalid || '');
@@ -43,7 +50,10 @@ export function StatementImportDialog({
     event.preventDefault();
     if (!file || !bankId || busy) return;
     const id = createUuid();
+    const controller = new AbortController();
+    importController.current = controller;
     setProcessingId(id);
+    setCancelling(false);
     setBusy(true);
     setError('');
     const input = new FormData();
@@ -51,7 +61,10 @@ export function StatementImportDialog({
     input.set('processingId', id);
     input.set('bankId', bankId);
     input.set('currency', currency);
-    input.set('conversionType', conversionType);
+    input.set(
+      'conversionType',
+      conversionType,
+    );
     if (clientId && accountId) {
       input.set('clientId', clientId);
       input.set('bankAccountId', accountId);
@@ -60,36 +73,51 @@ export function StatementImportDialog({
       const saved = await request<StatementDetail>('/statement-imports/pdf', {
         method: 'POST',
         body: input,
+        signal: controller.signal,
       });
-      onImported(saved);
+      onImported(saved, clientId, conversionType);
     } catch (e) {
-      setError((e as Error).message);
+      if (controller.signal.aborted) {
+        setCancelling(true);
+        setError('');
+      } else {
+        setError((e as Error).message);
+      }
       setBusy(false);
+    } finally {
+      if (importController.current === controller) importController.current = null;
     }
   }
+  function cancelProcessing() {
+    if (!busy) {
+      onClose();
+      return;
+    }
+    setCancelling(true);
+    importController.current?.abort();
+  }
   return (
-    <section className="ui-card conversion-import-page">
-      <header className="import-page-header">
-        <div>
-          <p className="conversion-eyebrow">NOUVELLE CONVERSION</p>
-          <h1>
-            {conversionType === 'EXTRACT'
-              ? 'Convertir un extrait bancaire PDF'
-              : 'Importer un relevé PDF'}
-          </h1>
-          <p className="muted">
-            {conversionType === 'EXTRACT'
-              ? 'Importez un extrait existant. Ses opérations seront lues, contrôlées et converties avec le même modèle qu’un relevé.'
-              : 'Un document, un compte, une conversion prête à vérifier.'}
-          </p>
-        </div>
-        <Button variant="outline" disabled={busy} onClick={onClose}>
-          Retour
-        </Button>
-      </header>
-      <form onSubmit={submit} className="import-page-form">
-        <fieldset className="conversion-type-options" disabled={busy}>
-          <legend>Type de conversion</legend>
+    <div className="conversion-import-page">
+      <PageHeader
+        eyebrow="Nouvelle conversion"
+        title={
+          conversionType === 'EXTRACT' ? 'Importer un extrait bancaire PDF' : 'Importer un relevé PDF'
+        }
+        description={
+          conversionType === 'EXTRACT'
+            ? 'Importez un extrait existant. Ses opérations seront lues, contrôlées et converties avec le même choix de modèles qu’un relevé.'
+            : 'Choisissez la banque du relevé. Le dossier client et le compte bancaire sont facultatifs à cette étape.'
+        }
+        icon={Upload}
+        actions={
+          <Button variant="outline" disabled={busy} onClick={onClose}>
+            Retour
+          </Button>
+        }
+      />
+      <form onSubmit={submit} className="ui-card import-page-form">
+        <fieldset className="conversion-type-options" disabled={busy || cancelling}>
+          <legend>Type de traitement</legend>
           <label className={conversionType === 'STATEMENT' ? 'is-selected' : ''}>
             <input
               type="radio"
@@ -117,7 +145,10 @@ export function StatementImportDialog({
             </span>
           </label>
         </fieldset>
-        <ConversionSteps current={1} extractMode={conversionType === 'EXTRACT'} />
+        <ConversionSteps
+          current={1}
+          extractMode={conversionType === 'EXTRACT'}
+        />
         {busy && (
           <p className="muted text-sm">
             Lecture automatique du PDF, puis revue des mouvements et des soldes.
@@ -238,11 +269,10 @@ export function StatementImportDialog({
                 </select>
               </label>
               <label className="text-sm">
-                Compte bancaire
+                Compte bancaire — facultatif
                 <select
                   className="ui-input mt-2"
                   aria-label="Compte bancaire du relevé"
-                  required={!!clientId}
                   disabled={!clientId}
                   value={accountId}
                   onChange={(e) => {
@@ -254,9 +284,12 @@ export function StatementImportDialog({
                     }
                   }}
                 >
-                  <option value="">Choisir le compte du client…</option>
+                  <option value="">Choisir plus tard</option>
                   {accounts.data
-                    ?.filter((a) => a.clientId === clientId)
+                    ?.filter(
+                      (a) =>
+                        a.clientId === clientId && banks.data?.some((bank) => bank.id === a.bankId),
+                    )
                     .map((account) => (
                       <option key={account.id} value={account.id}>
                         {account.bank} · {account.accountName} · {account.accountNumber}
@@ -272,7 +305,13 @@ export function StatementImportDialog({
           </div>
         </fieldset>
         {processingId && (
-          <ProcessingProgress key={processingId} id={processingId} failed={!busy && !!error} />
+          <ProcessingProgress
+            key={processingId}
+            id={processingId}
+            failed={!busy && !!error}
+            cancelling={cancelling}
+            onTerminal={finishCancellation}
+          />
         )}
         {(error || banks.error || clients.error || accounts.error) && (
           <p role="alert" className="conversion-alert error">
@@ -293,22 +332,24 @@ export function StatementImportDialog({
                 : !bankId
                   ? 'Choisissez la banque pour continuer.'
                   : clientId && !accountId
-                    ? 'Choisissez le compte bancaire du client.'
+                    ? 'Le compte sera associé lors du choix de l’écriture du client.'
                     : 'Tout est prêt pour traiter votre PDF.'}
           </p>
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
-              Annuler
-            </Button>
             <Button
-              disabled={busy || !file || !bankId || !!banks.error || (!!clientId && !accountId)}
+              type="button"
+              variant="outline"
+              onClick={cancelling ? onClose : cancelProcessing}
             >
+              {cancelling ? 'Fermer' : busy ? 'Annuler le traitement' : 'Annuler'}
+            </Button>
+            <Button disabled={busy || cancelling || !file || !bankId || !!banks.error}>
               <Upload size={16} />
               {busy ? 'Lecture et adaptation…' : 'Importer et continuer'}
             </Button>
           </div>
         </div>
       </form>
-    </section>
+    </div>
   );
 }

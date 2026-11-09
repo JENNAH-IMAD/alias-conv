@@ -10,9 +10,17 @@ internal static class StatementValueParser
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(1);
 
     internal static (DateOnly? Operation, DateOnly? Value) CompleteDates(DateOnly? operation, DateOnly? value,
-        string operationText, string valueText, ICollection<ExportError> warnings)
+        string operationText, string valueText, ICollection<ExportError> warnings, DateOnly? periodStart = null, DateOnly? periodEnd = null)
     {
         var completed = false;
+        if (!operation.HasValue && value.HasValue && !IsMissingDate(operationText))
+            operation = Date(operationText, periodStart, periodEnd, value, requireWithinPeriod: periodStart.HasValue && periodEnd > periodStart);
+        if (!value.HasValue && operation.HasValue && !IsMissingDate(valueText))
+            value = Date(valueText, periodStart, periodEnd, operation);
+        if ((operation.HasValue && !IsMissingDate(operationText) && !Date(operationText, null, null).HasValue
+                || value.HasValue && !IsMissingDate(valueText) && !Date(valueText, null, null).HasValue)
+            && !warnings.Any(w => w.Code == "PDF_DATE_YEAR_COMPLETED"))
+            warnings.Add(new("PDF_DATE_YEAR_COMPLETED", "Les dates abrégées ont été complétées à partir de la période, des soldes ou de l’en-tête du relevé. Vérifiez le passage d’année avec le PDF original.", SourceField: "Date"));
         if (!operation.HasValue && value.HasValue && IsMissingDate(operationText))
         {
             operation = value;
@@ -88,24 +96,60 @@ internal static class StatementValueParser
             ? accountingNegative ? -value : value : null;
     }
 
-    internal static DateOnly? Date(string text, DateOnly? start, DateOnly? end, DateOnly? reference = null)
+    internal static DateOnly? Date(string text, DateOnly? start, DateOnly? end, DateOnly? reference = null, bool requireWithinPeriod = false)
     {
+        // Month names are printed by several banks; never let parsing supply the current year.
+        var named = Regex.Match(text.Trim(), @"^(\d{1,2})\s+([\p{L}.]+)(?:\s+(\d{4}|\d{2}))?$", RegexOptions.None, Timeout);
+        if (named.Success && Month(named.Groups[2].Value) is int month)
+            text = $"{named.Groups[1].Value}/{month:00}" + (named.Groups[3].Success ? "/" + named.Groups[3].Value : "");
+        if (DateOnly.TryParseExact(text.Trim(), ["yyyy-MM-dd", "yyyy/MM/dd", "yyyy.MM.dd"],
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var iso))
+            return iso;
         // OCR may split even the year over two lines: "01/03/20\n26".
         text = text.Contains('/') || text.Contains('-') || text.Contains('.')
             ? Regex.Replace(text.Trim(), @"\s+", "", RegexOptions.None, Timeout).Replace('-', '/').Replace('.', '/')
             : Regex.Replace(text.Trim(), @"\s+", "/", RegexOptions.None, Timeout);
-        if (DateOnly.TryParseExact(text, ["dd/MM/yyyy", "d/MM/yyyy", "dd/MM/yy", "d/MM/yy", "yyyyMMdd"],
+        if (DateOnly.TryParseExact(text, ["d/M/yyyy", "dd/M/yyyy", "d/MM/yyyy", "dd/MM/yyyy", "d/M/yy", "dd/M/yy", "d/MM/yy", "dd/MM/yy", "yyyy/MM/dd", "yyyyMMdd", "ddMMyyyy", "ddMMyy"],
             CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
             return date;
-        if (!start.HasValue || !Regex.IsMatch(text, @"^\d{1,2}/\d{2}$", RegexOptions.None, Timeout))
+        if (Regex.IsMatch(text, @"^\d{4}$", RegexOptions.None, Timeout))
+            text = text[..2] + "/" + text[2..];
+        start ??= end ?? reference;
+        if (!start.HasValue || !Regex.IsMatch(text, @"^\d{1,2}/\d{1,2}$", RegexOptions.None, Timeout))
             return null;
         var candidates = new List<DateOnly>();
-        for (var year = start.Value.Year - 1; year <= (end ?? start).Value.Year + 1; year++)
-            if (DateOnly.TryParseExact($"{text}/{year:0000}", ["dd/MM/yyyy", "d/MM/yyyy"],
+        for (var year = Math.Max(1, start.Value.Year - 1); year <= Math.Min(9999, (end ?? start).Value.Year + 1); year++)
+            if (DateOnly.TryParseExact($"{text}/{year:0000}", ["d/M/yyyy", "dd/M/yyyy", "d/MM/yyyy", "dd/MM/yyyy"],
                 CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
                 candidates.Add(date);
+        if (!reference.HasValue && end.HasValue && candidates.Count(d => d >= start.Value && d <= end.Value) > 1)
+            return null; // A multi-year period alone cannot identify this movement's year.
+        if (requireWithinPeriod && end.HasValue)
+            candidates = candidates.Where(d => d >= start.Value && d <= end.Value).ToList();
         // Operation dates prefer the period; value dates follow their operation, including adjacent years.
         return candidates.OrderBy(d => reference.HasValue || !end.HasValue || d >= start.Value && d <= end.Value ? 0 : 1)
             .ThenBy(d => Math.Abs(d.DayNumber - (reference ?? start.Value).DayNumber)).Select(d => (DateOnly?)d).FirstOrDefault();
+    }
+
+    internal static int? Month(string text)
+    {
+        var folded = new string(text.Normalize(NormalizationForm.FormD)
+            .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray()).TrimEnd('.').ToLowerInvariant();
+        return folded switch
+        {
+            "janvier" or "janv" or "jan" or "january" => 1,
+            "fevrier" or "fevr" or "fev" or "february" or "feb" => 2,
+            "mars" or "march" or "mar" => 3,
+            "avril" or "avr" or "april" or "apr" => 4,
+            "mai" or "may" => 5,
+            "juin" or "june" or "jun" => 6,
+            "juillet" or "juil" or "july" or "jul" => 7,
+            "aout" or "august" or "aug" => 8,
+            "septembre" or "sept" or "september" or "sep" => 9,
+            "octobre" or "october" or "oct" => 10,
+            "novembre" or "november" or "nov" => 11,
+            "decembre" or "december" or "dec" => 12,
+            _ => null
+        };
     }
 }

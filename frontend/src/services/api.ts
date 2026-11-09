@@ -84,7 +84,7 @@ export type ExportField = {
 export type ExportTemplate = {
   id: string;
   name: string;
-  type: 'CUSTOMCSV' | 'SAGE100' | 'SAGEX3';
+  type: 'CUSTOMCSV' | 'SAGE100' | 'SAGEX3' | 'SAGE100ENTRIES' | 'SAGEX3ENTRIES';
   description: string;
   fileExtension: string;
   delimiter: string;
@@ -142,7 +142,8 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       credentials: 'include',
       cache: 'no-store',
     });
-  } catch {
+  } catch (cause) {
+    if (options.signal?.aborted) throw cause;
     throw new Error('API inaccessible. Vérifiez que le backend est démarré.');
   }
   if (!response.ok) {

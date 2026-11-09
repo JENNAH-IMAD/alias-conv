@@ -10,10 +10,10 @@ public record ClientDto(Guid Id, string Name, string LegalName, string ICE, stri
 public record ClientInput(string Name, string LegalName, string ICE, string IF, string RC, string Email, string Phone, string Country = "Maroc");
 public record BankDto(Guid Id, string Name, string Code, string Description, int Clients, string Status = "OK", int Accounts = 0, Guid? LogoVersion = null);
 public record BankAccountSummary(Guid Id, string Client, string AccountName, string AccountNumber, string Currency);
+public record BankCatalogEntry(string Name, string Code);
 public record BankInput(string Name, string Code, string Description);
 public record BankAccountDto(Guid Id, Guid ClientId, Guid BankId, string Bank, string AccountNumber, string AccountName, string Currency, string Journal, string AccountCode);
 public record BankAccountInput(Guid ClientId, Guid BankId, string AccountNumber, string AccountName, string Currency, string Journal, string AccountCode);
-public record DocumentDto(Guid Id, Guid ClientId, Guid BankAccountId, string Client, string Bank, string AccountName, string AccountNumber, string FileName, DateTime CreatedAt);
 public record ExportFieldDto(string FieldName, string SourceField, int Position, string? Format, bool Required);
 public record ExportInput(string Name, string Type, string Description, string FileExtension, string Delimiter, string Encoding, string NumberCulture, bool IncludeHeader, bool IsActive, List<ExportFieldDto> Fields);
 public record ExportDto(Guid Id, string Name, string Type, string Description, string FileExtension, string Delimiter, string Encoding, string NumberCulture, bool IncludeHeader, bool IsActive, List<ExportFieldDto> Fields);

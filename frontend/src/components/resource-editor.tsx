@@ -103,6 +103,14 @@ export function ResourceEditor({
                   onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
                 >
                   <option value="">Choisir…</option>
+                  {key === 'bankId' &&
+                    !!values.id &&
+                    !!values.bankId &&
+                    !banks.some((bank) => bank.id === values.bankId) && (
+                      <option value={String(values.bankId)}>
+                        {String(values.bank ?? 'Banque historique')} · compte existant
+                      </option>
+                    )}
                   {(key === 'bankId' ? banks : clients).map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}

@@ -12,7 +12,8 @@ public static class HybridStatementNormalizer
         try
         {
             var method = page.ReadingMethod ?? "NATIVE_PDF";
-            return native.Normalize(new(method, [page], SourcePageCount: totalPages), context.BankName,
+            return native.Normalize(new(method, [page], SourcePageCount: totalPages,
+                PipelineVersion: page.Model?.Contains("PP-StructureV3", StringComparison.Ordinal) == true ? "local-layout-v1" : null), context.BankName,
                 context.BankCode ?? "", context.Currency ?? "", ct, metadata: context with
                 {
                     Transactions = [],
@@ -35,37 +36,20 @@ public static class HybridStatementNormalizer
     {
         var empty = new BankStatement { BankName = bankName, BankCode = bankCode, Currency = currency };
         var context = PdfStatementMetadata.Complete(new(empty, [], document), manual).Statement;
-        // Keep the existing whole-document parsers for continuation rows and repeated table headers.
-        if (document.Pages.All(page => page.ReadingMethod != "OPENROUTER"))
+        // Keep whole-document parsers for continuation rows and repeated table headers.
+        try
         {
-            try
+            var result = native.Normalize(document with { Method = "PADDLE_OCR" },
+                bankName, bankCode, currency, ct, metadata: manual);
+            return result with
             {
-                var result = native.Normalize(document with
+                RawDocument = document with
                 {
-                    Method = "PADDLE_OCR"
-                }, bankName, bankCode, currency, ct, metadata: manual);
-                return result with
-                {
-                    RawDocument = document
-                };
-            }
-            catch (AppException error) when (CanReview(error)) { }
+                    Pages = result.RawDocument?.Pages ?? document.Pages
+                }
+            };
         }
-        if (document.Pages.All(page => page.ReadingMethod == "OPENROUTER"))
-        {
-            try
-            {
-                var result = native.Normalize(document with
-                {
-                    Method = "OPENROUTER"
-                }, bankName, bankCode, currency, ct, metadata: manual);
-                return result with
-                {
-                    RawDocument = document
-                };
-            }
-            catch (AppException error) when (CanReview(error)) { }
-        }
+        catch (AppException error) when (CanReview(error)) { }
         var warnings = new List<ExportError>();
         var transactions = new List<StatementTransaction>();
         var readings = new List<PdfStatementExtraction>();

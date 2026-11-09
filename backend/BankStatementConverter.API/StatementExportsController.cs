@@ -57,4 +57,10 @@ public sealed class StatementExportsController(StatementImportService service) :
             truncated = text.Length > 200000
         });
     }
+    [HttpDelete("archives/{jobId:guid}")]
+    public async Task<IActionResult> DeleteArchived(Guid statementId, Guid jobId, CancellationToken ct)
+    {
+        await service.DeleteArchivedExportAsync(statementId, jobId, ct);
+        return NoContent();
+    }
 }

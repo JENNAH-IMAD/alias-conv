@@ -55,10 +55,15 @@ export function HistorySelection<T extends { id: string }>({
     setBusy(true);
     setError('');
     try {
-      const result = await request<{ deleted: number }>(`/history/${kind}/delete-selection`, {
-        method: 'POST',
-        body: JSON.stringify({ ...pending.selection, ...filters }),
-      });
+      const filtered =
+        kind === 'statements' && ['search', 'action', 'from', 'to'].some((key) => filters[key]);
+      const result = await request<{ deleted: number }>(
+        `/history/${kind}/${filtered ? 'delete-filtered-selection' : 'delete-selection'}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ ...pending.selection, ...filters }),
+        },
+      );
       setPending(null);
       setAll(false);
       setIds(new Set());
@@ -95,17 +100,19 @@ export function HistorySelection<T extends { id: string }>({
             />{' '}
             Sélectionner cette page
           </label>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading || busy || !!pending}
-            onClick={() => {
-              setAll(true);
-              setIds(new Set());
-            }}
-          >
-            Tout sélectionner ({total})
-          </Button>
+          {total > items.length && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loading || busy || !!pending}
+              onClick={() => {
+                setAll(true);
+                setIds(new Set());
+              }}
+            >
+              Tout sélectionner ({total})
+            </Button>
+          )}
           {count > 0 && (
             <>
               <span className="muted text-sm" role="status">
@@ -155,14 +162,16 @@ export function HistorySelection<T extends { id: string }>({
                   onChange={() => toggle(item.id)}
                 />
                 <Button
-                  variant="danger"
+                  variant="ghost"
                   size="sm"
+                  className="history-delete-trigger"
+                  title="Supprimer cette action de l’historique"
                   aria-label="Supprimer cette action"
                   disabled={busy || !!pending}
                   onClick={() => choose({ all: false, ids: [item.id], excludeIds: [] }, 1)}
                 >
-                  <Trash2 size={14} />
-                  Supprimer
+                  <Trash2 size={15} />
+                  <span className="sr-only">Supprimer</span>
                 </Button>
               </div>
             ) : null,

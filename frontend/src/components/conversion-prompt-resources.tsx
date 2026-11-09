@@ -210,51 +210,50 @@ function PromptContent({ type, compact = false }: { type: DocumentType; compact?
       setMessage((error as Error).message);
     }
   }
-  if (compact)
+  if (compact) {
+    const documentLabel = type === 'EXTRACT' ? 'extrait' : 'relevé';
     return (
       <>
-        <div className="overview-inline-prompt-buttons">
+        <div className="dashboard-prompt-actions">
           {chatGptUrl ? (
-            <Button size="sm" asChild>
-              <a
-                href={chatGptUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Ouvrir ChatGPT avec le prompt"
-              >
-                <ExternalLink size={14} />
-                Ouvrir ChatGPT
-              </a>
-            </Button>
+            <a
+              className="dashboard-prompt-open"
+              href={chatGptUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Ouvrir ChatGPT avec le prompt ${documentLabel}`}
+            >
+              ChatGPT <ExternalLink size={13} />
+            </a>
           ) : (
-            <Button size="sm" disabled>
-              <ExternalLink size={14} />
-              Ouvrir ChatGPT
-            </Button>
+            <span className="dashboard-prompt-loading">Chargement…</span>
           )}
-          <Button
-            variant="outline"
-            size="sm"
+          <button
+            type="button"
             onClick={copyPrompt}
             disabled={busy}
-            aria-label="Copier le prompt"
+            aria-label={`Copier le prompt ${documentLabel}`}
+            title={`Copier le prompt ${documentLabel}`}
           >
             <Copy size={14} />
-            {busy ? 'Chargement…' : 'Copier'}
-          </Button>
-        </div>
-        <div className="overview-inline-prompt-links">
-          <button type="button" onClick={togglePrompt} aria-expanded={open} aria-controls={fieldId}>
-            {open ? (
-              <ChevronUp size={14} aria-hidden="true" />
-            ) : (
-              <BookOpen size={14} aria-hidden="true" />
-            )}
-            {open ? 'Masquer' : 'Lire le prompt'}
           </button>
-          <a href={path} download aria-label="Télécharger le prompt (.txt)">
-            <Download size={14} aria-hidden="true" />
-            Télécharger
+          <button
+            type="button"
+            onClick={togglePrompt}
+            aria-expanded={open}
+            aria-controls={fieldId}
+            aria-label={`${open ? 'Masquer' : 'Lire'} le prompt ${documentLabel}`}
+            title={`${open ? 'Masquer' : 'Lire'} le prompt ${documentLabel}`}
+          >
+            {open ? <ChevronUp size={14} /> : <BookOpen size={14} />}
+          </button>
+          <a
+            href={path}
+            download
+            aria-label={`Télécharger le prompt ${documentLabel}`}
+            title={`Télécharger le prompt ${documentLabel}`}
+          >
+            <Download size={14} />
           </a>
         </div>
         {open && (
@@ -262,7 +261,7 @@ function PromptContent({ type, compact = false }: { type: DocumentType; compact?
             className="overview-inline-prompt-text"
             ref={field}
             id={fieldId}
-            aria-label="Prompt de conversion pour ChatGPT"
+            aria-label={`Prompt de conversion ${documentLabel}`}
             readOnly
             value={prompt}
             rows={6}
@@ -275,6 +274,8 @@ function PromptContent({ type, compact = false }: { type: DocumentType; compact?
         )}
       </>
     );
+  }
+
   return (
     <>
       <p className="conversion-prompt-description">

@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);build-check/**</DefaultItemExcludes>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../BankStatementConverter.Infrastructure/BankStatementConverter.Infrastructure.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.22">

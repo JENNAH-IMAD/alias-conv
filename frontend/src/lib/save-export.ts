@@ -79,3 +79,22 @@ export async function saveExportBlob(blob: Blob, destination: ExportDestination)
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
+
+// Open the save dialog only after generation succeeds, so server errors cannot leave an empty file.
+export async function saveReadyExportBlob(
+  blob: Blob,
+  name: string,
+  extension: string,
+): Promise<void> {
+  if (!blob.size)
+    throw new Error('Le serveur a renvoyé un fichier vide. Aucun fichier n’a été enregistré.');
+  let destination: ExportDestination;
+  try {
+    destination = await chooseExportDestination(name, extension);
+  } catch (error) {
+    // A slow generation can consume the browser's transient activation; its native download still works.
+    if (!(error instanceof Error) || error.name !== 'SecurityError') throw error;
+    destination = { name };
+  }
+  await saveExportBlob(blob, destination);
+}

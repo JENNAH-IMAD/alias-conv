@@ -19,10 +19,11 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
     }
     private sealed record Header(double Y, Token Date, Token? ValueDate, Token? Reference, Token Description, Token Debit, Token Credit)
     {
-        public double MoneyStart => Debit.Left - 55;
+        public double MoneyStart => Math.Min(Debit.Left, Credit.Left) - 55;
         // Column captions may be left-aligned (e.g. "Débit Dirhams").
-        // The credit caption gives the start of that column, not its centre.
-        public double MoneySplit => Credit.Left - 6;
+        // The right-hand caption gives that column's start, even when credit comes first.
+        public double MoneySplit => Math.Max(Debit.Left, Credit.Left) - 6;
+        public bool IsDebit(Token token) => ((token.Left + token.Right) / 2 < MoneySplit) == (Debit.Left < Credit.Left);
     }
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
     private static readonly string[] MoneyCurrencies = ["MAD", "EUR", "USD", "GBP", "CHF"];
@@ -31,6 +32,20 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
         foreach (var box in page.Boxes)
         {
             var y = page.Height - (native ? box.Bottom : (box.Top + box.Bottom) / 2);
+            if (Regex.IsMatch(box.Text.Trim(), @"^\d{1,2}\s+\d{1,2}\s+\d{2,4}$", RegexOptions.None, RegexTimeout))
+            {
+                yield return new(box.Text.Trim(), box.Left, box.Right, y);
+                continue;
+            }
+            // Narrow bilingual date headings can be returned as a single OCR box.
+            // Split only this explicit pair; movement narratives remain intact.
+            if (Regex.IsMatch(box.Text, @"^\s*OPER\s+VALEUR\s*$", RegexOptions.IgnoreCase, RegexTimeout))
+            {
+                foreach (Match caption in Regex.Matches(box.Text, @"\S+", RegexOptions.None, RegexTimeout))
+                    yield return new(caption.Value, box.Left + (box.Right - box.Left) * caption.Index / box.Text.Length,
+                        box.Left + (box.Right - box.Left) * (caption.Index + caption.Length) / box.Text.Length, y);
+                continue;
+            }
             if (box.Text.IndexOfAny([',', '.']) >= 0 && box.Text.Any(char.IsDigit)
                 && MoneyCurrencies.Any(currency => StatementValueParser.Money(box.Text, currency).HasValue))
             {
@@ -98,20 +113,23 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
             var debitColumn = One("Debit");
             var creditColumn = One("Credit");
             if (date != null && description != null && debitColumn != null && creditColumn != null
-                && date.Left < description.Left && description.Left < debitColumn.Left && debitColumn.Left < creditColumn.Left)
+                && date.Left < description.Left && description.Left < Math.Min(debitColumn.Left, creditColumn.Left)
+                && debitColumn.Left != creditColumn.Left)
                 return new(line.Y, date, One("Date") == null ? null : One("ValueDate"), One("Reference"), description, debitColumn, creditColumn);
         }
+        if (FindMultilineHeader(words) is { } multiline)
+            return multiline;
         foreach (var debit in words.Where(w => StatementFieldNames.Column(w.Text) == "Debit").OrderByDescending(w => w.Y))
         {
             var nearby = words.Where(w => Math.Abs(w.Y - debit.Y) <= 12).OrderBy(w => w.Left).ToList();
             var credit = nearby.FirstOrDefault(w => w.Left > debit.Left && StatementFieldNames.Column(w.Text) == "Credit");
-            var dates = nearby.Where(w => Has(w.Text, "^DATE$")).ToList();
+            var dates = nearby.Where(w => StatementFieldNames.Column(w.Text) == "Date").ToList();
             var description = nearby.FirstOrDefault(w => StatementFieldNames.Column(w.Text) == "Description" && !Has(w.Text, "^OP.?RATIONS?$"))
                 ?? nearby.FirstOrDefault(w => Has(w.Text, "^NATURE$"))
                 ?? nearby.FirstOrDefault(w => w.Left > (dates.LastOrDefault()?.Right ?? 0) && Has(w.Text, "^OP.?RATION$"));
             if (credit == null || dates.Count == 0 || description == null)
                 continue;
-            var value = dates.Skip(1).FirstOrDefault() ?? nearby.FirstOrDefault(w => Has(w.Text, "^VALEUR$") && w.Left > dates[0].Left + 30);
+            var value = dates.Skip(1).FirstOrDefault() ?? nearby.FirstOrDefault(w => Has(w.Text, "^VALEUR$") && w.Left > dates[0].Right);
             var reference = nearby.FirstOrDefault(w => Has(w.Text, "^R.?F.?RENCE$"));
             return new(nearby.Where(w => Has(w.Text, "^(DATE|VALEUR|OP.?RATION|LIBELL.?E?|NATURE|D.?BIT|CR.?DIT)$")).Min(w => w.Y), dates[0], value, reference, description, debit, credit);
         }
@@ -198,11 +216,8 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
                     || int.Parse(folio.Groups[2].Value, CultureInfo.InvariantCulture) != (document.SourcePageCount ?? document.Pages.Count))
                     throw new AppException(422, "Le relevé est incomplet ou ses pages sont désordonnées. Vérifiez les numéros de page du PDF original.");
         }
-        // OpenRouter returns transcribed cells, not OCR positions. Never infer geometry from its text containers.
         if (document.Method == "HYBRID")
             return HybridStatementNormalizer.Normalize(this, document, bankName, bankCode, currency, ct, metadata);
-        if (document.Method == "OPENROUTER")
-            return StructuredStatementNormalizer.Normalize(document, bankName, bankCode, currency, ct, mapping?.TableColumns, metadata);
         if (mapping == null && BmceNativeStatementNormalizer.TryNormalize(document, bankName, bankCode, currency, ct) is { } bmce)
             return PdfStatementMetadata.Complete(bmce, metadata);
         if (document.Pages.Any(p => p.Tables is { Count: > 0 }) && (mapping == null || mapping.TableColumns != null))
@@ -212,13 +227,17 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
             try
             {
                 structured = StructuredStatementNormalizer.Normalize(document, bankName, bankCode, currency, ct, mapping?.TableColumns, metadata);
-                if (mapping != null || PdfExtractionQuality.Defects(structured) == 0)
+                if (mapping != null)
                     return structured;
             }
             catch (AppException e) when (mapping == null && e.Status == 422 && !e.Message.Contains("devise", StringComparison.OrdinalIgnoreCase))
             {
                 failure = e;
             }
+            if (mapping == null && TryLocalLayoutReading(document, structured, bankName, bankCode, currency, ct, metadata) is { } localReading)
+                return localReading;
+            if (structured != null && PdfExtractionQuality.Defects(structured) == 0)
+                return structured;
             if (mapping == null && document.NativePages is { Count: > 0 } && document.NativePages.Count == document.Pages.Count && document.NativePages.All(p => p.Boxes.Count >= 10))
             {
                 PdfStatementExtraction? recovered = null;
@@ -279,7 +298,7 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
             end ??= printed.PeriodEnd;
         }
         var balanceLines = allLines.Select((l, i) => (Line: l, Index: i)).Where(x =>
-            Has(x.Line.Text, $@"^\s*(?:{FullDate}\s+)?(?:(?:(?:ANCIEN|NOUVEAU)\s+)?SOLDE\b|(?:OPENING|CLOSING|PREVIOUS|ENDING)\s+BALANCE\b)")
+            Has(x.Line.Text, $@"^\s*(?:\d{{1,3}}/\d{{1,3}}\s+)?(?:{FullDate}\s+)?(?:(?:[A-Z]{{1,10}}\s+)?SOLDE\b|(?:OPENING|CLOSING|PREVIOUS|ENDING)\s+BALANCE\b)")
             && !StatementFieldNames.IsAvailableBalance(x.Line.Text)
             && !Has(x.Line.Text, @"REPORT(?:E)?\s+(?:DE\s+)?(PAGE|INTERMEDIAIRE)")).ToList();
         var openingLine = balanceLines.FirstOrDefault(x => StatementFieldNames.Balance(x.Line.Text) == "OpeningBalance" || Has(x.Line.Text, @"\bSOLDE\s+REPORT\b"));
@@ -296,7 +315,9 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
             if (line.Line == null || Has(line.Line.Text, @"\bNON\s+DETERMINEE?\b"))
                 return null;
             var values = MoneyValues(line.Line.Text);
-            if (values.Count == 0 && line.Index + 1 < allLines.Count)
+            if (values.Count == 0 && line.Index + 1 < allLines.Count
+                && !Has(line.Line.Text, @"\d+[,.]\d(?!\d)")
+                && !Has(allLines[line.Index + 1].Text, @"^\s*\d{1,2}(?:[/.-]|\s+)\d{1,2}"))
                 values = MoneyValues(allLines[line.Index + 1].Text);
             if (values.Count == 0)
                 return null;
@@ -310,7 +331,7 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
             var caption = pages.Select(FindHeader).FirstOrDefault(h => h != null);
             var amountEnd = line.Line.Words.LastOrDefault(w => Has(w.Text, @"[,.]\d{2}$"));
             if (caption != null && amountEnd != null && amountEnd.Left > caption.MoneyStart
-                && (amountEnd.Left + amountEnd.Right) / 2 < caption.MoneySplit)
+                && caption.IsDebit(amountEnd))
                 return -Math.Abs(value);
             return value;
         }
@@ -321,6 +342,7 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
             .Skip(1).Select(m => Date(m.Value, null, null)).FirstOrDefault();
         start ??= BalanceDate(openingLine.Line);
         end ??= BalanceDate(closingLine.Line);
+        var dateContext = StatementDateContext.Resolve(document, start, end, metadata);
         var transactions = new List<StatementTransaction>();
         Header? previous = null;
         for (var pageIndex = 0; pageIndex < pages.Count; pageIndex++)
@@ -345,10 +367,12 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
             var lines = Lines(words);
             var footer = lines.FirstOrDefault(l => l.Y < header.Y - 15 && Has(l.Text, @"^\s*TOTAL\b|\bTOTAL\s+D.?BIT\b"));
             bool InDateColumn(Line line, Token word, Token caption) => Math.Abs(word.Left - caption.Left) < 28
-                && (Regex.IsMatch(word.Text, @"^\d{2}[/.-]\d{2}", RegexOptions.None, RegexTimeout)
-                    || Regex.IsMatch(word.Text, @"^\d{2}$", RegexOptions.None, RegexTimeout)
+                && (caption == header.Date ? header.ValueDate == null || Math.Abs(word.Left - caption.Left) <= Math.Abs(word.Left - header.ValueDate.Left)
+                    : Math.Abs(word.Left - caption.Left) < Math.Abs(word.Left - header.Date.Left))
+                && (Regex.IsMatch(word.Text, @"^(?:\d{1,2}(?:[/.-]|\s+)\d{1,2}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{4}(?:\d{4})?$)", RegexOptions.None, RegexTimeout)
+                    || Regex.IsMatch(word.Text, @"^\d{1,2}$", RegexOptions.None, RegexTimeout)
                         && line.Words.Any(next => next.Left >= word.Right && next.Left - word.Right < 15
-                            && Regex.IsMatch(next.Text, @"^\d{2}$", RegexOptions.None, RegexTimeout)));
+                            && (Regex.IsMatch(next.Text, @"^\d{1,2}$", RegexOptions.None, RegexTimeout) || StatementValueParser.Month(next.Text).HasValue)));
             bool IsDateStart(Line line, Token word) => InDateColumn(line, word, header.Date) || header.ValueDate != null && InDateColumn(line, word, header.ValueDate);
             var anchors = lines.Where(l => l.Y < header.Y - 3 && l.Y > (footer?.Y ?? double.MinValue) && l.Words.Any(w => IsDateStart(l, w))).ToList();
             if (anchors.Count == 0)
@@ -373,28 +397,29 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
                         .Where(c => c != null && c.Left > caption.Left + 10).Select(c => c!.Left).DefaultIfEmpty(double.MaxValue).Min();
                     var candidates = band.Where(w => w.Left >= first.Left - 1 && w.Left < nextColumn - 3
                             && w.Left < first.Left + 68 && Math.Abs(w.Y - first.Y) <= 12
-                            && Regex.IsMatch(w.Text, @"^(?=.*\d)[\d/.-]+$", RegexOptions.None, RegexTimeout))
+                            && (Regex.IsMatch(w.Text, @"^(?=.*\d)[\d /.-]+$", RegexOptions.None, RegexTimeout) || StatementValueParser.Month(w.Text).HasValue))
                         .OrderBy(w => w == first ? 0 : 1).ThenByDescending(w => w.Y).ThenBy(w => w.Left).ToList();
                     // A cell may have a year on the following line. Prefer the complete printed
                     // form when available, but never take numbers from a neighboring column.
                     for (var count = Math.Min(4, candidates.Count); count > 0; count--)
                     {
                         var cell = candidates.Take(count).ToList();
-                        if (Date(string.Join(" ", cell.Select(w => w.Text)), start, end).HasValue)
+                        if (Date(string.Join(" ", cell.Select(w => w.Text)), dateContext.Start, dateContext.End).HasValue)
                             return cell;
                     }
                     return candidates.Count > 0 ? candidates : [first];
                 }
                 var dateWords = dateStart == null ? new List<Token>() : DateCell(dateStart, header.Date);
-                var operationDate = Date(string.Join(" ", dateWords.Select(w => w.Text)), start, end);
+                var operationDate = StatementValueParser.Date(string.Join(" ", dateWords.Select(w => w.Text)), dateContext.Start, dateContext.End,
+                    requireWithinPeriod: start.HasValue && end > start);
                 var descriptionStart = dateWords.Select(w => w.Right).DefaultIfEmpty(header.Date.Right).Max() + 2;
-                var valueStart = header.ValueDate == null ? null : anchor.Words.FirstOrDefault(w => Math.Abs(w.Left - header.ValueDate.Left) < 23 && Regex.IsMatch(w.Text, @"^\d{2}(?:[/.-]\d{2}|$)", RegexOptions.None, RegexTimeout));
+                var valueStart = header.ValueDate == null ? null : anchor.Words.FirstOrDefault(w => InDateColumn(anchor, w, header.ValueDate));
                 List<Token> valueWords = [];
                 DateOnly? valueDate = null;
                 if (valueStart != null)
                 {
                     valueWords = DateCell(valueStart, header.ValueDate!);
-                    valueDate = Date(string.Join(" ", valueWords.Select(w => w.Text)), start, end, operationDate);
+                    valueDate = Date(string.Join(" ", valueWords.Select(w => w.Text)), dateContext.Start, dateContext.End, operationDate);
                     if (header.ValueDate!.Left < header.Description.Left)
                         descriptionStart = valueWords.Max(w => w.Right) + 2;
                 }
@@ -422,18 +447,21 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
                 }
                 if (mapping != null)
                     descriptionStart = document.Pages[pageIndex].Width * mapping.Description / 100;
-                var descriptionEnd = header.ValueDate != null && header.ValueDate.Left > header.Description.Left && header.ValueDate.Left < header.Debit.Left
-                    ? (valueStart?.Left ?? header.ValueDate.Left) - 3 : header.Debit.Left - 12;
+                var moneyLeft = Math.Min(header.Debit.Left, header.Credit.Left);
+                var descriptionEnd = header.ValueDate != null && header.ValueDate.Left > header.Description.Left && header.ValueDate.Left < moneyLeft
+                    ? (valueStart?.Left ?? header.ValueDate.Left) - 3 : moneyLeft - 12;
                 if (header.Reference != null && header.Reference.Left > header.Description.Left && header.Reference.Left < descriptionEnd)
                     descriptionEnd = header.Reference.Left - 12;
-                var description = string.Join("\n", Lines(band.Where(w => w.Left >= descriptionStart && w.Left < descriptionEnd
+                // Adjacent OCR boxes can overlap by a point or two at a printed column rule.
+                // Keep the whole narrative box; identified date/reference cells stay excluded.
+                var description = string.Join("\n", Lines(band.Where(w => w.Left >= descriptionStart - 2 && w.Left < descriptionEnd
                         && !dateWords.Contains(w) && !valueWords.Contains(w) && !referenceWords.Contains(w)))
                     .Where(l => !Has(l.Text, @"\bSOLDE\b|\bREPORT\s+PAGE\b|^\s*TOTAL\b"))
                     .Select(l => Regex.Replace(l.Text.Trim(), @"\s+", " ", RegexOptions.None, RegexTimeout)));
-                var financial = anchor.Words.Where(w => !dateWords.Contains(w) && !valueWords.Contains(w) && !referenceWords.Contains(w) && w.Left > Math.Max(descriptionEnd, header.MoneyStart) && w.Left < header.Credit.Right + 85).ToList();
+                var financial = anchor.Words.Where(w => !dateWords.Contains(w) && !valueWords.Contains(w) && !referenceWords.Contains(w) && w.Left > Math.Max(descriptionEnd, header.MoneyStart) && w.Left < Math.Max(header.Debit.Right, header.Credit.Right) + 85).ToList();
                 decimal? Cell(bool debit)
                 {
-                    var cell = string.Join(" ", financial.Where(w => (w.Left + w.Right) / 2 < header.MoneySplit == debit).Select(w => w.Text));
+                    var cell = string.Join(" ", financial.Where(w => header.IsDebit(w) == debit).Select(w => w.Text));
                     return StatementValueParser.Money(cell, currency);
                 }
                 var debit = Cell(true);
@@ -446,7 +474,7 @@ public sealed partial class StatementPdfExtractor : IStatementPdfExtractor
                         .Where(c => c != null && c.Left > caption.Left + 10).Select(c => c!.Left).DefaultIfEmpty(double.MaxValue).Min();
                     return string.Join(" ", anchor.Words.Where(w => w.Left >= caption.Left - 28 && w.Left < next - 3).Select(w => w.Text));
                 }
-                (operationDate, valueDate) = StatementValueParser.CompleteDates(operationDate, valueDate, RawDateCell(header.Date), RawDateCell(header.ValueDate), warnings);
+                (operationDate, valueDate) = StatementValueParser.CompleteDates(operationDate, valueDate, RawDateCell(header.Date), RawDateCell(header.ValueDate), warnings, start, end);
                 debit = debit.HasValue ? Math.Abs(debit.Value) : null;
                 credit = credit.HasValue ? Math.Abs(credit.Value) : null;
                 var sequence = transactions.Count + 1;

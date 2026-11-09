@@ -394,7 +394,6 @@ textarea:focus-visible {
   width: 100%;
   margin: 0 auto;
   flex: 1;
-  animation: page-enter 0.2s ease-out;
 }
 .app-footer {
   margin: 0 34px;
@@ -1689,7 +1688,7 @@ textarea:focus-visible {
 .button-primary,
 .primary-action,
 .ui-button[data-variant='default'] {
-  background: var(--primary-gradient);
+  background: var(--action);
   color: var(--action-foreground);
   box-shadow: var(--primary-shadow);
   border: 1px solid transparent;
@@ -1698,7 +1697,7 @@ textarea:focus-visible {
 .button-primary:hover,
 .primary-action:hover,
 .ui-button[data-variant='default']:hover {
-  background: var(--primary-hover);
+  background: color-mix(in srgb, var(--action) 88%, var(--foreground));
   box-shadow: 0 5px 16px var(--halo);
   filter: none;
   transform: none;

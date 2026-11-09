@@ -1,6 +1,4 @@
 from pathlib import Path
-from decimal import Decimal
-from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, PageBreak
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors

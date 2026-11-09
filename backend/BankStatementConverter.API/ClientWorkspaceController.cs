@@ -2,21 +2,32 @@ using BankStatementConverter.Application;
 using BankStatementConverter.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 namespace BankStatementConverter.API;
 
-[ApiController, Route("api/client-workspace/{clientId:guid}/archives")]
-public class ClientWorkspaceController(DocumentService service, AppDbContext db) : ControllerBase
+[ApiController]
+public class ClientWorkspaceController(AppDbContext db) : ControllerBase
 {
-    [HttpGet]
-    public async Task<PageResult<DocumentDto>> List(Guid clientId, CancellationToken ct, int page = 1, int pageSize = 20)
+    [HttpGet("/api/client-workspace/model-filters")]
+    public async Task<IActionResult> ModelFilters(CancellationToken ct)
     {
-        if (!await db.Clients.AnyAsync(x => x.Id == clientId, ct))
-            throw new AppException(404, "Client introuvable.");
-        return await service.ListAsync(clientId, page, pageSize, ct);
+        var entryFormats = await db.EntryOutputTemplates.AsNoTracking()
+            .Where(template => template.Active)
+            .Select(template => new WorkspaceModelFilterOption(
+                template.Id, "entry-output", template.Name))
+            .ToListAsync(ct);
+        var exportModels = await db.ExportTemplates.AsNoTracking()
+            .Where(template => template.IsActive)
+            .Select(template => new WorkspaceModelFilterOption(
+                template.Id, "export", template.Name))
+            .ToListAsync(ct);
+        return Ok(entryFormats.Concat(exportModels)
+            .OrderBy(model => model.Kind).ThenBy(model => model.Label));
     }
+
     [HttpGet("/api/client-workspace/{clientId:guid}/statements")]
     [HttpGet("/api/client-workspace/statements")]
-    public async Task<IActionResult> Statements(CancellationToken ct, Guid? clientId = null, int page = 1, int pageSize = 20, bool unassigned = false, string? status = null, string? search = null, string? conversionType = null)
+    public async Task<IActionResult> Statements(CancellationToken ct, Guid? clientId = null, int page = 1, int pageSize = 20, bool unassigned = false, string? status = null, string? search = null, string? conversionType = null, Guid? exportTemplateId = null, Guid? entryOutputTemplateId = null)
     {
         Validation.Require(page >= 1 && pageSize is >= 1 and <= 100, "Pagination invalide.");
         Validation.Require(status == null || status is "VALIDATED" or "NEEDS_REVIEW" or "EXPORTED", "Statut invalide.");
@@ -35,6 +46,14 @@ public class ClientWorkspaceController(DocumentService service, AppDbContext db)
             query = query.Where(s => s.ClientId == null);
         if (status != null)
             query = query.Where(s => s.Status == status);
+        if (exportTemplateId.HasValue)
+            query = query.Where(s => db.ExportJobs.Any(job => job.StatementId == s.Id && job.TemplateId == exportTemplateId.Value));
+        if (entryOutputTemplateId.HasValue)
+        {
+            var snapshotFilter = JsonSerializer.Serialize(new { model = new { outputTemplateId = entryOutputTemplateId.Value } });
+            query = query.Where(s => db.AccountingEntryArchives.Any(archive => archive.StatementId == s.Id
+                && EF.Functions.JsonContains(archive.SnapshotJson, snapshotFilter)));
+        }
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();
@@ -112,7 +131,7 @@ public class ClientWorkspaceController(DocumentService service, AppDbContext db)
         });
     }
     [HttpGet("/api/client-workspace/history")]
-    public async Task<IActionResult> History(CancellationToken ct, Guid? statementId = null, Guid? clientId = null, Guid? bankAccountId = null, int page = 1, int pageSize = 20)
+    public async Task<IActionResult> History(CancellationToken ct, Guid? statementId = null, Guid? clientId = null, Guid? bankAccountId = null, int page = 1, int pageSize = 20, string? search = null, string? action = null, DateOnly? from = null, DateOnly? to = null)
     {
         Validation.Require(page >= 1 && pageSize is >= 1 and <= 100, "Pagination invalide.");
         var query = db.StatementActivities.AsNoTracking().AsQueryable();
@@ -122,17 +141,21 @@ public class ClientWorkspaceController(DocumentService service, AppDbContext db)
             query = query.Where(x => x.ClientId == clientId);
         if (bankAccountId.HasValue)
             query = query.Where(x => x.BankAccountId == bankAccountId);
+        query = HistoryActivityQuery.Apply(query, search, action, from, to);
         var items = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         Response.Headers.CacheControl = "no-store";
         return Ok(new
         {
             items,
+            filterVersion = 1,
             total = await query.CountAsync(ct),
             page,
             pageSize
         });
     }
 }
+
+public sealed record WorkspaceModelFilterOption(Guid Id, string Kind, string Label);
 
 public sealed class StatementExtractArchiveRow
 {

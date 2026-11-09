@@ -27,10 +27,10 @@ public sealed class ExportEngine(IExportSourceResolver resolver, ExportDateForma
         {
             foreach (var field in fields)
             {
-                var date = field.SourceField is "Date" or "ValueDate";
+                var date = field.SourceField is "Date" or "ValueDate" or "DueDate";
                 if (!Validation.ExportSources.Contains(field.SourceField))
                     errors.Add(new("UNRESOLVED_SOURCE", "Source inconnue dans ce modèle.", null, field.FieldName, field.SourceField));
-                else if (!string.IsNullOrEmpty(field.Format) && (date ? !Validation.DateFormats.Contains(field.Format) : field.Format is not ("0.00" or "0.000" or "0.##")))
+                else if (field.SourceField != "Constant" && !string.IsNullOrEmpty(field.Format) && (date ? !Validation.DateFormats.Contains(field.Format) : field.Format is not ("0.00" or "0.000" or "0.##")))
                     errors.Add(new(date ? "INVALID_DATE_FORMAT" : "INVALID_NUMBER_FORMAT", "Format de colonne invalide.", null, field.FieldName, field.SourceField));
             }
             errors.Add(new("INVALID_EXPORT_TEMPLATE", "Configuration du modèle invalide. Vérifiez ses paramètres."));
@@ -51,7 +51,9 @@ public sealed class ExportEngine(IExportSourceResolver resolver, ExportDateForma
             "ascii" => Encoding.GetEncoding("us-ascii", EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback),
             _ => new UTF8Encoding(false, true)
         };
-        var sage = template.Type is "SAGEX3" or "SAGE100";
+        var sage = template.Type is "SAGEX3" or "SAGE100" or "SAGE100ENTRIES" or "SAGEX3ENTRIES";
+        if (template.Type is "SAGE100ENTRIES" or "SAGEX3ENTRIES")
+            warnings.Add(new("ACCOUNTING_MOVEMENTS_ONLY", "Export des mouvements du compte bancaire : contrôlez et complétez les contreparties et l'équilibre des pièces dans votre préparation comptable. La structure doit correspondre au modèle d'import du dossier Sage."));
         var columns = fields.Select(f => sage && template.Encoding == "ascii" ? SageTextCompatibility.Ascii(f.FieldName) : f.FieldName).ToArray();
         void CheckEncoding(string text, ExportTemplateField field, int? sequence)
         {
@@ -91,7 +93,9 @@ public sealed class ExportEngine(IExportSourceResolver resolver, ExportDateForma
             for (var i = 0; i < fields.Count; i++)
             {
                 var field = fields[i];
-                var resolved = resolver.Resolve(field.SourceField, exportRow.Statement, transaction);
+                var resolved = field.SourceField == "Constant"
+                    ? new ResolvedExportSource(true, field.Format ?? "")
+                    : resolver.Resolve(field.SourceField, exportRow.Statement, transaction);
                 var value = resolved.Value;
                 var balanceDescription = exportRow.Kind != "TRANSACTION" && field.SourceField is "Description" or "MovementDescription";
                 if (balanceDescription)
@@ -139,7 +143,7 @@ public sealed class ExportEngine(IExportSourceResolver resolver, ExportDateForma
                     var original = row[i];
                     if (field.SourceField is "Description" or "MovementDescription" or "DescriptionWithBalances")
                         row[i] = SageTextCompatibility.Description(row[i], template.Type == "SAGEX3");
-                    if (template.Type == "SAGE100" && field.SourceField == "Direction")
+                    if (template.Type is "SAGE100" or "SAGE100ENTRIES" && field.SourceField == "Direction")
                         row[i] = SageTextCompatibility.Direction(row[i]);
                     if (template.Encoding == "ascii")
                         row[i] = SageTextCompatibility.Ascii(row[i]);
@@ -171,6 +175,7 @@ public sealed class ExportEngine(IExportSourceResolver resolver, ExportDateForma
         (template.Type == "CUSTOMCSV" ? (IExportWriter)csv : txt).Write(prepared.Columns, prepared.Rows, template.Delimiter, IncludeHeader(template));
     public Task<ExportResult> GenerateAsync(BankStatement statement, ExportTemplate template, CancellationToken ct, ExportGenerationOptions? options = null)
     {
+        if (template.Type == "SAGE100ENTRIES") throw new AppException(422, "Utilisez la préparation comptable pour exporter les écritures Sage 100.");
         options ??= new();
         if (options.EditedText is { Length: > 2000000 })
             throw new AppException(400, "Le texte modifié est limité à 2 000 000 caractères.");
@@ -207,7 +212,8 @@ public sealed class ExportEngine(IExportSourceResolver resolver, ExportDateForma
             fileName = Path.GetFileNameWithoutExtension(fileName) + "_a_verifier." + template.FileExtension;
         else if (options.EditedText != null)
             fileName = Path.GetFileNameWithoutExtension(fileName) + "_modifie." + template.FileExtension;
-        return Task.FromResult(new ExportResult(fileName, $"{(template.Type == "CUSTOMCSV" ? "text/csv" : "text/plain")}; charset={encoding.WebName}",
+        var mime = template.FileExtension switch { "csv" => "text/csv", "tsv" => "text/tab-separated-values", _ => "text/plain" };
+        return Task.FromResult(new ExportResult(fileName, $"{mime}; charset={encoding.WebName}",
             template.FileExtension, content, options.EditedText == null ? prepared.Rows.Count : ExportTextRecordCount.Count(options.EditedText, IncludeHeader(template)), prepared.Warnings, prepared.Errors, allowed,
             encoding.WebName == "us-ascii" ? "ascii" : encoding.WebName, options.EditedText != null));
     }

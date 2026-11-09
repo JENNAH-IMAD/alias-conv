@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { AlertTriangle, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, Info, ChevronDown } from 'lucide-react';
 import type { ExportDiagnostic } from '@/services/api';
 
 const diagnosticFieldNames: Record<string, string> = {
@@ -38,56 +38,27 @@ export function StatementDiagnostics({
   onStatement?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const items = [
-    ...errors.map((e) => ({ ...e, blocking: true })),
-    ...warnings.map((e) => ({ ...e, blocking: false })),
-  ];
-  if (!items.length)
+  const countLabel = (count: number, single: string, plural: string) =>
+    `${count} ${count === 1 ? single : plural}`;
+  function issueItem(issue: ExportDiagnostic, blocking: boolean, index: number) {
+    const field =
+      issue.fieldName ||
+      (issue.sourceField ? (diagnosticFieldNames[issue.sourceField] ?? issue.sourceField) : '');
     return (
-      <div className="conversion-clean">
-        <ShieldCheck size={18} />
-        <span>Aucune anomalie détectée dans les données contrôlées.</span>
-      </div>
-    );
-  return (
-    <div className="conversion-diagnostics" aria-label="Diagnostics du relevé">
-      <div className="conversion-section-heading">
-        <h3>
-          <AlertTriangle size={17} />
-          Points à vérifier
-        </h3>
-        <span>
-          {errors.length} erreur(s) · {warnings.length} avertissement(s)
+      <li
+        key={`${issue.code}-${issue.transactionSequence}-${index}`}
+        className={blocking ? 'error' : 'warning'}
+      >
+        <span className="conversion-diagnostic-mark" aria-hidden="true">
+          {blocking ? '!' : <Info size={14} />}
         </span>
-      </div>
-      <ul>
-        {(expanded ? items : items.slice(0, 3)).map((issue, index) => (
-          <li
-            key={`${issue.code}-${issue.transactionSequence}-${issue.fieldName}-${index}`}
-            className={issue.blocking ? 'error' : 'warning'}
-          >
-            <span className="conversion-diagnostic-mark">{issue.blocking ? '!' : 'i'}</span>
-            <div>
-              <strong>
-                {issue.transactionSequence ? `Transaction ${issue.transactionSequence}` : 'Relevé'}
-                {issue.fieldName
-                  ? ` · ${issue.fieldName}`
-                  : issue.sourceField
-                    ? ` · ${diagnosticFieldNames[issue.sourceField] ?? issue.sourceField}`
-                    : ''}
-              </strong>
-              <p>{issue.message}</p>
-              <small
-                title={
-                  issue.blocking
-                    ? 'À corriger avant validation ou export'
-                    : 'À vérifier avec le PDF original'
-                }
-              >
-                {issue.code}
-              </small>
-            </div>
-            {issue.transactionSequence && onTransaction && (
+        <div>
+          <div className="diagnostic-issue-heading">
+            <strong>
+              {issue.transactionSequence ? `Mouvement ${issue.transactionSequence}` : 'Document'}
+              {field ? ` · ${field}` : ''}
+            </strong>
+            {issue.transactionSequence && onTransaction ? (
               <button
                 type="button"
                 className="conversion-text-action"
@@ -95,25 +66,72 @@ export function StatementDiagnostics({
               >
                 Corriger
               </button>
-            )}
-            {!issue.transactionSequence && onStatement && issue.blocking && (
+            ) : blocking && onStatement ? (
               <button type="button" className="conversion-text-action" onClick={onStatement}>
-                Corriger les informations
+                Corriger
               </button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {items.length > 3 && (
+            ) : null}
+          </div>
+          <p>{issue.message}</p>
+          <details className="diagnostic-technical">
+            <summary>Référence du contrôle</summary>
+            <code>{issue.code}</code>
+          </details>
+        </div>
+      </li>
+    );
+  }
+  if (!errors.length && !warnings.length)
+    return (
+      <div className="conversion-clean">
+        <ShieldCheck size={18} />
+        <span>Aucune anomalie détectée dans les données contrôlées.</span>
+      </div>
+    );
+  return (
+    <section className="conversion-diagnostics" aria-label="Diagnostics du relevé">
+      <div className="conversion-section-heading">
+        <h3>
+          {errors.length ? <AlertTriangle size={17} /> : <ShieldCheck size={17} />}
+          {errors.length ? 'Corrections nécessaires' : 'Contrôle du document'}
+        </h3>
+        <span>
+          {errors.length
+            ? countLabel(errors.length, 'correction', 'corrections')
+            : 'Aucune erreur bloquante'}
+        </span>
+      </div>
+      {errors.length > 0 && (
+        <ul>
+          {(expanded ? errors : errors.slice(0, 2)).map((issue, index) =>
+            issueItem(issue, true, index),
+          )}
+        </ul>
+      )}
+      {errors.length > 2 && (
         <button
           type="button"
           className="conversion-text-action mt-3"
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
         >
-          {expanded ? 'Réduire' : `Voir les ${items.length} diagnostics`}
+          {expanded ? 'Réduire' : `Voir les ${errors.length} corrections`}
         </button>
       )}
-    </div>
+      {warnings.length > 0 && (
+        <details className="diagnostic-warnings">
+          <summary>
+            <Info size={15} />
+            {countLabel(
+              warnings.length,
+              'point de contrôle complémentaire',
+              'points de contrôle complémentaires',
+            )}
+            <ChevronDown size={15} />
+          </summary>
+          <ul>{warnings.map((issue, index) => issueItem(issue, false, index))}</ul>
+        </details>
+      )}
+    </section>
   );
 }

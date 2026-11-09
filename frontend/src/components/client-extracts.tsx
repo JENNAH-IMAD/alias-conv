@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, ViewTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Download, Eye, RefreshCw, Search, FileText } from 'lucide-react';
+import { Download, Eye, Search, FileText } from 'lucide-react';
 import { documentBlob, saveBlob, type Page } from '@/services/api';
 import { useApi } from '@/services/use-api';
 import { money, date, accountSuffix, type StatementExtract } from '@/services/statement-exports';
@@ -11,6 +11,7 @@ import { Button } from './ui/button';
 import { LoadState } from './ui/load-state';
 import { Pagination } from './ui/pagination';
 import { BankDialog } from './bank-dialogs';
+import { conversionTransitionName, useDetailTransition } from './route-detail-transition';
 
 type ArchivedExtract = Omit<StatementExtract, 'transactions' | 'sourceVersion'> & {
   statementId: string;
@@ -24,6 +25,7 @@ type ArchivedExtract = Omit<StatementExtract, 'transactions' | 'sourceVersion'> 
 
 export function ClientExtracts({ clientId }: { clientId: string }) {
   const router = useRouter();
+  const { remember } = useDetailTransition();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [term, setTerm] = useState('');
@@ -126,15 +128,6 @@ export function ClientExtracts({ clientId }: { clientId: string }) {
           <Search size={16} />
           Rechercher
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          aria-label="Actualiser les extraits"
-          disabled={extracts.loading}
-          onClick={extracts.reload}
-        >
-          <RefreshCw size={16} />
-        </Button>
       </form>
       <LoadState loading={extracts.loading} error={extracts.error} />
       {!extracts.loading && !extracts.error && !extracts.data?.items.length && (
@@ -159,7 +152,13 @@ export function ClientExtracts({ clientId }: { clientId: string }) {
               <span className="ui-tag">Extrait enregistré</span>
             </div>
             <div>
-              <h3>{item.filterText || 'Tous les mouvements'}</h3>
+              <ViewTransition
+                name={conversionTransitionName(item.statementId, item.id)}
+                share="workspace-detail"
+                default="none"
+              >
+                <h3 className="workspace-transition-identity">{item.filterText || 'Tous les mouvements'}</h3>
+              </ViewTransition>
               {item.excludeText && <p>Exclus : {item.excludeText}</p>}
               <p>
                 {item.clientName || 'À classer'} · {item.bankName}
@@ -175,33 +174,45 @@ export function ClientExtracts({ clientId }: { clientId: string }) {
               </p>
             </div>
             {totals(item)}
-            <div className="flex flex-wrap gap-2">
+            <div className="client-archive-actions">
               <Button
                 size="sm"
-                variant="outline"
                 onClick={() => {
                   setSelected(item);
                   setPreviewPage(1);
                 }}
               >
                 <Eye size={15} />
-                Aperçu du fichier
+                Consulter l’extrait
               </Button>
-              <Button
-                size="sm"
-                permission="documents.export"
-                disabled={!!busy}
-                onClick={() => void download(item)}
-              >
-                <Download size={15} />
-                Télécharger CSV
-              </Button>
-              <Link
-                className="conversion-text-action"
-                href={`/conversions?statementId=${item.statementId}&type=extract&extractId=${item.id}`}
-              >
-                Ouvrir la conversion
-              </Link>
+              <details className="client-archive-more">
+                <summary>Autres actions</summary>
+                <div className="client-archive-more-list">
+                  <Button
+                    size="sm"
+                    permission="documents.export"
+                    disabled={!!busy}
+                    onClick={() => void download(item)}
+                  >
+                    <Download size={15} /> Télécharger le CSV
+                  </Button>
+                  <Button size="sm" variant="outline" asChild>
+                    <Link
+                      href={`/conversions?statementId=${item.statementId}&type=extract&extractId=${item.id}`}
+                      transitionTypes={['detail-navigation']}
+                      onNavigate={() =>
+                        remember({
+                          name: conversionTransitionName(item.statementId, item.id),
+                          title: item.filterText || 'Tous les mouvements',
+                          subtitle: item.sourceFileName || 'Extrait bancaire',
+                        })
+                      }
+                    >
+                      Ouvrir le traitement
+                    </Link>
+                  </Button>
+                </div>
+              </details>
             </div>
           </article>
         ))}

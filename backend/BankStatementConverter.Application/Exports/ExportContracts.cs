@@ -13,7 +13,8 @@ public record ExportPreview(ExportTemplateSummary Template, IReadOnlyList<string
     IReadOnlyList<ExportError> Warnings, IReadOnlyList<ExportError> Errors, int StatementVersion = 0, string TemplateFingerprint = "",
     IReadOnlyList<string>? RowKinds = null, IReadOnlyList<int[]>? RowColumnIndices = null, string? Text = null, bool TextTruncated = false, Guid? ExtractId = null);
 public record StatementVersionRequest(int Version);
-public sealed record SaveStatementExtractRequest(int StatementVersion, string? FilterText, string? ExcludeText = null, BankStatement? Statement = null);
+public sealed record SaveStatementExtractRequest(int StatementVersion, string? FilterText, string? ExcludeText = null, BankStatement? Statement = null, Guid? TemplateId = null,
+    IReadOnlyList<ExportColumnFilter>? ColumnFilters = null, string? TemplateFingerprint = null);
 public record PrepareStatementExportRequest(int StatementVersion, Guid TemplateId, Guid? ExtractId = null);
 public record PreparedStatementExport(StatementDetail Detail, ExportPreview Preview);
 public record ExportRequest(int StatementVersion, string? TemplateFingerprint = null, bool AllowErrors = false, string? EditedText = null, Guid? ExtractId = null);

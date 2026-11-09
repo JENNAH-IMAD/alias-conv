@@ -1,0 +1,337 @@
+/* Shared presentation for every workspace page. Page styles own their layout, not their theme. */
+body .app-shell .conversion-import-page .conversion-type-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+body .app-shell .conversion-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  max-width: none;
+  margin-inline: auto;
+}
+body .app-shell .conversion-start-actions > .ui-button {
+  flex: 0 1 250px;
+  width: min(100%, 250px);
+  min-height: 44px;
+  justify-content: center;
+  white-space: nowrap;
+}
+body .app-shell .conversion-start-actions > span {
+  flex: 0 0 100%;
+  text-align: center;
+}
+@media (max-width: 767px) {
+  body .app-shell .conversion-import-page .conversion-type-options,
+  body .app-shell .conversion-start-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  body .app-shell .conversion-start-actions {
+    flex-direction: column;
+  }
+  body .app-shell .conversion-start-actions > .ui-button {
+    flex-basis: auto;
+    width: min(100%, 340px);
+  }
+}
+.client-accounting-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+}
+@media (max-width: 767px) {
+  .client-accounting-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .client-accounting-filters > label {
+    grid-column: 1 / -1;
+  }
+  .client-accounting-filters > button {
+    width: 100%;
+  }
+}
+@media (max-width: 420px) {
+  .client-accounting-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .client-accounting-filters > label {
+    grid-column: auto;
+  }
+  .client-workspace-page .workspace-document-tabs {
+    flex-wrap: wrap;
+    padding-inline: 0;
+    gap: 4px;
+    overflow: visible;
+  }
+  .client-workspace-page .workspace-document-tabs > button {
+    flex: 1 1 150px;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    padding: 12px;
+  }
+}
+/* The document owns vertical page scrolling; large tables retain horizontal overflow. */
+body .app-shell.app-shell-browser-scroll,
+body .app-shell-browser-scroll .app-body {
+  height: auto;
+  max-height: none;
+  min-height: 100dvh;
+  overflow: visible;
+}
+body .app-shell-browser-scroll .app-scroll {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
+  overscroll-behavior: auto;
+}
+
+.conversion-result-continue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 16px;
+}
+body .app-shell .statement-workspace.conversion-guided.stage-5 {
+  display: flex;
+  flex-direction: column;
+}
+body .app-shell .conversion-guided.stage-5 > .conversion-flow-header {
+  width: 100%;
+}
+body .app-shell .conversion-guided.stage-5 > .conversion-export-panel {
+  order: 1;
+  display: block;
+  width: 100%;
+}
+body .app-shell .conversion-guided.stage-5 > .conversion-review-layout {
+  order: 2;
+  width: 100%;
+}
+.app-shell {
+  --workspace-card-radius: 14px;
+  --workspace-card-shadow: 0 2px 8px color-mix(in srgb, var(--foreground) 3%, transparent);
+}
+.conversion-stage,
+body .app-shell .conversion-import-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  min-width: 0;
+}
+body .app-shell .conversion-import-page {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+body .app-shell .conversion-import-page .import-page-form {
+  padding: 24px;
+}
+body .app-shell .conversion-model-step {
+  max-width: none;
+  margin-inline: 0;
+}
+
+body .app-shell .main-content {
+  width: 100%;
+  max-width: 1660px;
+  margin-inline: auto;
+  padding: 28px 32px;
+}
+body .app-shell .main-content > :is(.ui-page, .conversion-page) {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding-top: 0;
+  gap: 20px;
+}
+
+/* Reuse the application's existing light/dark tokens for all cards and controls. */
+body
+  .app-shell
+  :is(
+    .ui-card,
+    .overview-card,
+    .history-panel,
+    .history-overview,
+    .settings-card,
+    .accounting-card,
+    .accounting-journal-manager-card,
+    .conversion-library,
+    .conversion-launchpad
+  ) {
+  border-color: var(--border);
+  border-radius: var(--workspace-card-radius);
+  background-color: var(--surface);
+  box-shadow: var(--workspace-card-shadow);
+}
+body .app-shell .ui-button {
+  border-radius: 8px;
+  font-family: var(--font-inter), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  transition-duration: 150ms;
+}
+body .app-shell :is(.ui-input, [data-slot='input']) {
+  border-radius: 8px;
+  font-family: var(--font-inter), sans-serif;
+  font-size: 13px;
+}
+body .app-shell .desktop-sidebar {
+  overflow: visible;
+  border-color: var(--border);
+  background: var(--surface);
+}
+body .app-shell .desktop-sidebar {
+  padding: 18px 12px 12px;
+  box-shadow: 2px 0 16px rgb(15 35 70 / 3%);
+}
+body .app-shell .desktop-sidebar .sidebar-header {
+  height: 100px;
+}
+body .app-shell .desktop-sidebar .sidebar-nav {
+  gap: 14px;
+  padding: 6px 3px 10px;
+  scrollbar-gutter: auto;
+}
+body .app-shell .desktop-sidebar .sidebar-nav > div > div {
+  display: grid;
+  gap: 3px;
+}
+body .app-shell .desktop-sidebar .sidebar-nav {
+  min-height: 0;
+  flex: 1;
+}
+body .app-shell .desktop-sidebar .nav-caption {
+  margin: 8px 0 7px;
+  padding-inline: 10px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.075em;
+}
+body .app-shell .desktop-sidebar .nav-link {
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 8px;
+  gap: 9px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.25;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+body .app-shell .desktop-sidebar .nav-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+body .app-shell .desktop-sidebar .nav-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.8;
+}
+body .app-shell .desktop-sidebar .nav-link:hover:not(.active) {
+  background: var(--surface-alt);
+  color: var(--foreground);
+}
+body .app-shell .desktop-sidebar .nav-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+body .app-shell .desktop-sidebar .nav-link.active {
+  border-color: transparent;
+  background: transparent;
+  color: var(--link);
+  box-shadow: none;
+}
+body .app-shell .desktop-sidebar .nav-link.active::before {
+  content: none;
+}
+body .app-shell .desktop-sidebar .nav-link.active .nav-icon {
+  background: var(--surface);
+  color: var(--link);
+}
+body .app-shell .dashboard-overview .overview-icon {
+  background: var(--accent);
+  color: var(--link);
+}
+body .app-shell :is(.settings-summary-visual, .dashboard-priorities) {
+  border-color: var(--border);
+  background: var(--hero-background);
+  color: var(--foreground);
+}
+body .app-shell .settings-summary-visual h2 {
+  color: var(--foreground);
+}
+body
+  .app-shell
+  :is(
+    .settings-preview-label,
+    .settings-summary-visual > p,
+    .dashboard-priority-label,
+    .dashboard-priorities > p,
+    .dashboard-unassigned > span
+  ) {
+  color: var(--muted-foreground);
+}
+body .app-shell .settings-preview-icon {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--link);
+}
+body .app-shell :is(.settings-reading-flow, .dashboard-unassigned) {
+  border-color: var(--border);
+  color: var(--link);
+}
+body .app-shell .settings-reading-flow > svg:nth-child(even) {
+  color: var(--muted-foreground);
+}
+body .app-shell .dashboard-priorities > a {
+  background: var(--action);
+  color: var(--action-foreground);
+}
+body .app-shell .dashboard-priorities > a:hover {
+  background: var(--primary-hover);
+}
+body .app-shell .dashboard-priorities > a:focus-visible {
+  outline-color: var(--ring);
+}
+body .app-shell .alias-page-header .dashboard-heading-resources {
+  flex: initial;
+  width: 340px;
+  max-width: 100%;
+  padding-left: 20px;
+}
+
+@media (max-width: 1100px) {
+  body .app-shell .alias-page-header .dashboard-heading-resources {
+    width: 100%;
+    padding: 16px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+@media (max-width: 767px) {
+  body .app-shell .main-content {
+    padding: 20px 16px;
+  }
+  body .app-shell .conversion-import-page .import-page-form {
+    padding: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body .app-shell .ui-button {
+    transition-duration: 0.01ms;
+  }
+}

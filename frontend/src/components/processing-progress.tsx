@@ -38,11 +38,22 @@ const steps = [
   },
 ];
 
-export function ProcessingProgress({ id, failed = false }: { id: string; failed?: boolean }) {
+export function ProcessingProgress({
+  id,
+  failed = false,
+  cancelling = false,
+  onTerminal,
+}: {
+  id: string;
+  failed?: boolean;
+  cancelling?: boolean;
+  onTerminal?: () => void;
+}) {
   const [progress, setProgress] = useState<ProcessingStatus | null>(null);
   const [lastStage, setLastStage] = useState('uploading');
   const [elapsed, setElapsed] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
+  const [cancelledBeforeTracking, setCancelledBeforeTracking] = useState(false);
   useEffect(() => {
     if (failed) {
       const controller = new AbortController();
@@ -55,6 +66,7 @@ export function ProcessingProgress({ id, failed = false }: { id: string; failed?
           setProgress(next);
           if (next.activeStage) setLastStage(next.activeStage);
           else if (!['done', 'failed', 'cancelled'].includes(next.stage)) setLastStage(next.stage);
+          if (['done', 'failed', 'cancelled'].includes(next.stage)) onTerminal?.();
         })
         .catch(() => {});
       return () => controller.abort();
@@ -74,6 +86,7 @@ export function ProcessingProgress({ id, failed = false }: { id: string; failed?
         setUnavailable(false);
         missed = 0;
         if (['done', 'failed', 'cancelled'].includes(next.stage)) {
+          onTerminal?.();
           clearInterval(clock);
           return;
         }
@@ -81,7 +94,13 @@ export function ProcessingProgress({ id, failed = false }: { id: string; failed?
         if (controller.signal.aborted) return;
         // The upload can still be in transit before the server creates its tracking entry.
         missed += 1;
-        if (missed >= 5) setUnavailable(true);
+        if (missed >= 5) {
+          setUnavailable(true);
+          if (cancelling) {
+            setCancelledBeforeTracking(true);
+            onTerminal?.();
+          }
+        }
       }
       if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 1500);
     }
@@ -92,8 +111,12 @@ export function ProcessingProgress({ id, failed = false }: { id: string; failed?
       clearTimeout(timer);
       clearInterval(clock);
     };
-  }, [id, failed]);
-  const stage = failed ? 'failed' : (progress?.stage ?? 'uploading');
+  }, [id, failed, cancelling, onTerminal]);
+  const stage = failed
+    ? 'failed'
+    : cancelledBeforeTracking
+      ? 'cancelled'
+      : (progress?.stage ?? 'uploading');
   const terminal = ['done', 'failed', 'cancelled'].includes(stage);
   const activeStage = stage === 'failed' || stage === 'cancelled' ? lastStage : stage;
   const index =
@@ -103,7 +126,9 @@ export function ProcessingProgress({ id, failed = false }: { id: string; failed?
         ? 2
         : steps.findIndex((step) => step.key === activeStage);
   const title =
-    stage === 'uploading'
+    cancelling && !terminal
+      ? 'Annulation du traitement…'
+      : stage === 'uploading'
       ? 'Envoi du PDF'
       : stage === 'queued'
         ? 'En attente du moteur OCR'
@@ -215,6 +240,8 @@ export function ProcessingProgress({ id, failed = false }: { id: string; failed?
       <p className="processing-note">
         {terminal && stage !== 'done'
           ? 'Le traitement est arrêté. Consultez le message ci-dessous avant de relancer l’import.'
+          : cancelling
+            ? 'La demande d’annulation est envoyée. Le traitement s’arrêtera dès que le moteur PDF aura libéré ses ressources.'
           : unavailable
             ? 'Le suivi est momentanément indisponible. L’import reste en cours ; attendez son résultat.'
             : stage === 'done'

@@ -342,7 +342,7 @@
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 9%, var(--card));
 }
-.model-step-heading h1 {
+.model-step-heading :is(h1, h2) {
   font-size: clamp(21px, 2vw, 27px);
   font-weight: 700;
   margin: 5px 0;
@@ -447,14 +447,6 @@
     margin-left: 0;
   }
 }
-
-.guided-document-summary {
-  padding: 13px 16px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--foreground);
-}
 .conversion-guided .conversion-diagnostics ul {
   max-height: 180px;
   overflow: auto;
@@ -536,9 +528,6 @@
 }
 .conversion-guided .conversion-next-step {
   display: none;
-}
-.conversion-guided .conversion-document-card {
-  padding: 0;
 }
 .conversion-guided .conversion-table-heading {
   padding: 12px 16px;

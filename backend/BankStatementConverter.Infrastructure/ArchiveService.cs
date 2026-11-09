@@ -11,27 +11,34 @@ public class ArchiveCleanupWorker(IServiceScopeFactory scopes, ILogger<ArchiveCl
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                using var scope = scopes.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var storage = scope.ServiceProvider.GetRequiredService<IFileStorageService>();
-                foreach (var item in await db.PendingFileDeletions.OrderBy(x => x.CreatedAt).Take(100).ToListAsync(stoppingToken))
+                try
                 {
-                    try
+                    using var scope = scopes.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    var storage = scope.ServiceProvider.GetRequiredService<IFileStorageService>();
+                    foreach (var item in await db.PendingFileDeletions.OrderBy(x => x.CreatedAt).Take(100).ToListAsync(stoppingToken))
                     {
-                        storage.Delete(item.StorageKey);
-                        db.PendingFileDeletions.Remove(item);
+                        try
+                        {
+                            storage.Delete(item.StorageKey);
+                            db.PendingFileDeletions.Remove(item);
+                        }
+                        catch (IOException ex) { logger.LogWarning(ex, "Suppression de fichier à réessayer {Id}", item.Id); }
+                        catch (UnauthorizedAccessException ex) { logger.LogWarning(ex, "Accès au fichier à réessayer {Id}", item.Id); }
                     }
-                    catch (IOException ex) { logger.LogWarning(ex, "Suppression de fichier à réessayer {Id}", item.Id); }
-                    catch (UnauthorizedAccessException ex) { logger.LogWarning(ex, "Accès au fichier à réessayer {Id}", item.Id); }
+                    await db.SaveChangesAsync(stoppingToken);
                 }
-                await db.SaveChangesAsync(stoppingToken);
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested) { logger.LogWarning(ex, "Nettoyage des archives à réessayer"); }
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
-            catch (Exception ex) when (!stoppingToken.IsCancellationRequested) { logger.LogWarning(ex, "Nettoyage des archives à réessayer"); }
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // L'arrêt de l'hôte annule aussi les requêtes et l'attente entre deux passages.
         }
     }
 }

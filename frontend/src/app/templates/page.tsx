@@ -1,5 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { EntryExportTemplates } from '@/components/entry-export-templates';
 import { Button } from '@/components/ui/button';
 import { BankDialog } from '@/components/bank-dialogs';
 import { ExportTemplateEditor } from '@/components/export-template-editor';
@@ -10,14 +12,62 @@ import { Copy, FileOutput, Pencil, Plus, Trash2, Columns3 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { LoadState } from '@/components/ui/load-state';
 import { Pagination } from '@/components/ui/pagination';
+import { exportTypeLabel } from '@/services/export-template-defaults';
+import '@/styles/model-catalogs.css';
 
 export default function TemplatesPage() {
+  return (
+    <Suspense fallback={<p role="status">Chargement des modèles…</p>}>
+      <TemplateSections />
+    </Suspense>
+  );
+}
+function TemplateSections() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const entries = params.get('section') === 'entries';
+  return (
+    <div className={`${theme.page} templates-page`}>
+      <nav className="ui-card model-section-switcher" aria-label="Types de modèles d’exportation">
+        <Button
+          variant={!entries ? 'default' : 'outline'}
+          aria-pressed={!entries}
+          onClick={() => router.replace('/templates')}
+        >
+          Relevés et extraits bancaires
+        </Button>
+        <Button
+          variant={entries ? 'default' : 'outline'}
+          aria-pressed={entries}
+          onClick={() => router.replace('/templates?section=entries')}
+        >
+          Écritures comptables
+        </Button>
+      </nav>
+      {entries ? (
+        <>
+          <PageHeader
+            icon={FileOutput}
+            eyebrow="Modèles d’exportation · Écritures comptables"
+            title="Formats d’écritures comptables"
+            description="Définissez les colonnes, le séparateur et l’encodage des fichiers de vos clients."
+          />
+          <EntryExportTemplates />
+        </>
+      ) : (
+        <LegacyTemplatesPage />
+      )}
+    </div>
+  );
+}
+function LegacyTemplatesPage() {
   const [page, setPage] = useState(1);
   const { data, loading, error, reload } = useApi<Page<ExportTemplate>>(
     `/export-templates?page=${page}&pageSize=20`,
   );
   const [editing, setEditing] = useState<ExportTemplate | null | undefined>(undefined);
   const [duplicate, setDuplicate] = useState(false);
+  const [defaultType, setDefaultType] = useState<ExportTemplate['type']>('CUSTOMCSV');
   const [deleting, setDeleting] = useState<ExportTemplate | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -39,11 +89,12 @@ export default function TemplatesPage() {
     }
   }
   return (
-    <div className={`${theme.page} templates-page`}>
+    <div className="model-catalog-content">
       {editing !== undefined && (
         <ExportTemplateEditor
           initial={editing}
           duplicate={duplicate}
+          defaultType={defaultType}
           onClose={() => setEditing(undefined)}
           onSaved={() => {
             setNotice('Modèle enregistré.');
@@ -76,7 +127,7 @@ export default function TemplatesPage() {
       )}
       <PageHeader
         icon={FileOutput}
-        eyebrow="Référentiel"
+        eyebrow="Formats de fichiers"
         title="Modèles d’exportation"
         description="Gérez les formats CSV et Sage, leurs colonnes et leurs réglages."
         actions={
@@ -84,6 +135,7 @@ export default function TemplatesPage() {
             permission="templates.write"
             onClick={() => {
               setDuplicate(false);
+              setDefaultType('CUSTOMCSV');
               setEditing(null);
             }}
           >
@@ -123,12 +175,7 @@ export default function TemplatesPage() {
               <h2 className="text-lg font-semibold">{model.name}</h2>
             </div>
             <p className="template-format-meta">
-              {model.type === 'CUSTOMCSV'
-                ? 'CSV personnalisé'
-                : model.type === 'SAGE100'
-                  ? 'Sage 100'
-                  : 'Sage X3'}{' '}
-              · .{model.fileExtension} · {model.encoding}
+              {exportTypeLabel(model.type)} · .{model.fileExtension} · {model.encoding}
             </p>
             <p className="template-description">
               {model.description || 'Format personnalisé prêt à être configuré.'}
@@ -142,11 +189,11 @@ export default function TemplatesPage() {
                 {model.fields
                   .slice()
                   .sort((a, b) => a.position - b.position)
-                  .slice(0, 6)
+                  .slice(0, 5)
                   .map((field) => (
                     <span key={field.position}>{field.fieldName}</span>
                   ))}
-                {model.fields.length > 6 && <span>+{model.fields.length - 6} autres</span>}
+                {model.fields.length > 5 && <span>+{model.fields.length - 5} autres</span>}
               </div>
             </div>
             <div className="catalog-card-actions">

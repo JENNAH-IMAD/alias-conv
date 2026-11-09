@@ -13,7 +13,8 @@ public static class Permissions
         new("accounts.write", "Comptes bancaires", "Créer, modifier et supprimer", ["accounts.read", "clients.read", "banks.read"]),
         new("templates.read", "Modèles d’exportation", "Consulter", []),
         new("templates.write", "Modèles d’exportation", "Configurer les formats", ["templates.read"]),
-        new("documents.read", "Relevés et archives", "Consulter les PDF, mouvements et historiques", ["clients.read", "accounts.read", "banks.read", "templates.read"]),
+        new("history.read", "Historique", "Consulter le journal d’activité", ["documents.read"]),
+        new("documents.read", "Relevés et archives", "Consulter les PDF et mouvements", ["clients.read", "accounts.read", "banks.read", "templates.read"]),
         new("documents.write", "Relevés et archives", "Importer, adapter, corriger et valider", ["documents.read"]),
         new("documents.export", "Relevés et archives", "Télécharger les fichiers et exports", ["documents.read"])
     ];
@@ -34,5 +35,6 @@ public static class Permissions
 }
 public record UserDto(Guid Id, string Name, string Email, string Role, bool IsActive, string[] Permissions, DateTime CreatedAt, DateTime? LastLoginAt, int Version);
 public record UserInput(string Name, string Email, string Role, bool IsActive, string[] Permissions, string? Password, int? Version = null);
+public record UserProfileInput(string Name, string Email, string? CurrentPassword, string? NewPassword);
 public record SetupInput(string Name, string Email, string Password);
 public record LoginInput(string Email, string Password);

@@ -1,12 +1,21 @@
 import Link from 'next/link';
+import { LayoutDashboard } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
+import { Button } from '@/components/ui/button';
 export default function LoginPage() {
   return (
-    <section className="ui-card">
-      <h1 className="ui-title">Vous êtes connecté</h1>
-      <p className="muted mt-3">Votre espace de travail est disponible.</p>
-      <Link className="ui-button mt-5" href="/dashboard">
-        Ouvrir mon espace
-      </Link>
-    </section>
+    <div className="ui-page">
+      <PageHeader
+        eyebrow="Espace de travail"
+        title="Vous êtes connecté"
+        description="Votre espace de travail est disponible."
+        icon={LayoutDashboard}
+        actions={
+          <Button asChild>
+            <Link href="/dashboard">Ouvrir mon espace</Link>
+          </Button>
+        }
+      />
+    </div>
   );
 }

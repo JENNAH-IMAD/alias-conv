@@ -12,6 +12,7 @@ public sealed class ExportSourceResolver : IExportSourceResolver
         return source switch
         {
             "Date" => new(true, t.Date),
+            "Day" => new(true, t.Date?.Day.ToString("D2", System.Globalization.CultureInfo.InvariantCulture)),
             "ValueDate" => new(true, t.ValueDate),
             "Description" or "MovementDescription" or "DescriptionWithBalances" => new(true, t.Description),
             "Debit" => new(true, t.Debit),
@@ -29,8 +30,23 @@ public sealed class ExportSourceResolver : IExportSourceResolver
             "ClosingBalance" => new(true, s.ClosingBalance),
             "Journal" => new(true, t.Journal ?? s.Journal),
             "Account" => new(true, t.Account ?? s.Account),
+            "BankJournal" => new(true, s.BankJournal),
+            "BankAccount" => new(true, s.BankAccount),
+            "AccountingDebit" => new(true, t.Debit.HasValue == t.Credit.HasValue ? null : s.BalanceConvention switch
+            {
+                "CREDIT_INCREASES" => t.Credit ?? 0m,
+                "DEBIT_INCREASES" => t.Debit ?? 0m,
+                _ => null
+            }),
+            "AccountingCredit" => new(true, t.Debit.HasValue == t.Credit.HasValue ? null : s.BalanceConvention switch
+            {
+                "CREDIT_INCREASES" => t.Debit ?? 0m,
+                "DEBIT_INCREASES" => t.Credit ?? 0m,
+                _ => null
+            }),
             "Analytic" => new(true, t.Analytic ?? s.Analytic),
             "RecordType" => new(true, t.RecordType ?? s.RecordType),
+            "PieceNumber" or "ThirdParty" or "InvoiceNumber" or "DueDate" or "PaymentMethod" or "Pointage" => new(true, null),
             _ => new(false, null)
         };
     }

@@ -111,6 +111,31 @@ public sealed class WorkspaceUserService(AppDbContext db)
         await tx.CommitAsync(ct);
         return Dto(user);
     }
+    public async Task<WorkspaceUser> UpdateProfile(Guid id, UserProfileInput input, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(867530901)", ct);
+        var user = await db.WorkspaceUsers.SingleOrDefaultAsync(u => u.Id == id, ct)
+            ?? throw new AppException(404, "Utilisateur introuvable.");
+        Validation.Text(input.Name.Trim(), "Nom", 150);
+        user.Name = input.Name.Trim();
+        user.Email = Email(input.Email);
+        if (await db.WorkspaceUsers.AnyAsync(u => u.Id != user.Id && u.Email == user.Email, ct))
+            throw new AppException(409, "Cette adresse e-mail est déjà utilisée.");
+        if (!string.IsNullOrEmpty(input.NewPassword))
+        {
+            if (string.IsNullOrEmpty(input.CurrentPassword)
+                || Hasher.VerifyHashedPassword(user, user.PasswordHash, input.CurrentPassword) == PasswordVerificationResult.Failed)
+                throw new AppException(400, "Le mot de passe actuel est incorrect.");
+            Password(input.NewPassword);
+            user.PasswordHash = Hasher.HashPassword(user, input.NewPassword);
+            user.SessionVersion++;
+        }
+        user.Version++;
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return user;
+    }
     public async Task Delete(Guid id, int version, Guid actor, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);

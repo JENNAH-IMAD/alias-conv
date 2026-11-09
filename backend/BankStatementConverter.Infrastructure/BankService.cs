@@ -15,7 +15,9 @@ public class BankService(AppDbContext db)
         ValidatePage(page, pageSize);
         Validation.Require(search == null || search.Length <= 200, "Recherche : 200 caractères maximum.");
         Validation.Require(sort is "name" or "name-desc" or "code", "Tri invalide.");
-        var q = db.Banks.AsNoTracking();
+        var identities = await db.Banks.AsNoTracking().Select(b => new { b.Id, b.Name, b.Code }).ToListAsync(ct);
+        var visibleIds = identities.Where(b => MoroccanBankCatalog.IsSelectable(b.Name, b.Code)).Select(b => b.Id).ToArray();
+        var q = db.Banks.AsNoTracking().Where(b => visibleIds.Contains(b.Id));
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLowerInvariant();
@@ -38,12 +40,21 @@ public class BankService(AppDbContext db)
         var name = input.Name.Trim();
         var code = input.Code.Trim().ToUpperInvariant();
         Validation.Require(System.Text.RegularExpressions.Regex.IsMatch(code, "^[A-Z0-9][A-Z0-9_-]{0,29}$"), "Code : 1 à 30 lettres, chiffres, tirets ou underscores, commençant par une lettre ou un chiffre.");
+        Validation.Require(MoroccanBankCatalog.IsSelectable(name, code)
+            && MoroccanBankCatalog.CatalogCode(name) == MoroccanBankCatalog.CatalogCode(code),
+            "Choisissez une banque du catalogue des banques conventionnelles.");
         var bank = id.HasValue ? await db.Banks.FindAsync([id.Value], ct) ?? throw new AppException(404, "Banque introuvable.") : new Bank();
         if (await db.Banks.AnyAsync(b => b.Id != bank.Id && b.Code.ToUpper() == code, ct))
             throw new AppException(409, "Ce code bancaire est déjà utilisé.");
+        var canonical = MoroccanBankCatalog.CatalogCode(code);
+        var identities = await db.Banks.AsNoTracking().Where(b => b.Id != bank.Id).Select(b => new { b.Name, b.Code }).ToListAsync(ct);
+        var previousCanonical = MoroccanBankCatalog.CatalogCode(bank.Code) ?? MoroccanBankCatalog.CatalogCode(bank.Name);
+        if ((!id.HasValue || previousCanonical != canonical) && identities.Any(b => MoroccanBankCatalog.CatalogCode(b.Code) == canonical || MoroccanBankCatalog.CatalogCode(b.Name) == canonical))
+            throw new AppException(409, "Cette banque figure déjà dans le catalogue, éventuellement sous son ancien nom.");
         bank.Name = name;
         bank.Code = code;
         bank.Description = input.Description?.Trim() ?? "";
+        MoroccanBankCatalog.ApplyMissingLogos([bank]);
         if (!id.HasValue)
             db.Banks.Add(bank);
         await db.SaveChangesAsync(ct);

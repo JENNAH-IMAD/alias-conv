@@ -4,9 +4,17 @@ import { ArrowRight, FileCheck2, FileOutput, LoaderCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { ConversionSteps } from './conversion-steps';
 import { StatementSourceText } from './statement-source-text';
-import { ExportTemplate, request } from '@/services/api';
-import { reuseValidatedAdaptation } from '@/services/statement-adaptation';
+import { ExportTemplate } from '@/services/api';
+import { prepareStatementModel } from '@/services/prepare-statement-model';
 import type { StatementDetail, PreparedStatementExport } from '@/services/statement-exports';
+import { isAccountingTemplate } from '@/services/export-template-defaults';
+import {
+  AccountingEntryModelFlow,
+  type EntryFlowSelection,
+} from './accounting-entry-model-flow';
+import type { EntryModelPreview } from '@/services/entry-models';
+import type { EntryOutputTemplate } from '@/services/entry-models';
+import { useApi } from '@/services/use-api';
 
 export function StatementModelStep({
   detail,
@@ -18,8 +26,12 @@ export function StatementModelStep({
   error,
   onRetry,
   onImport,
+  initialEntrySelection,
+  onEntryReview,
+  onReloadEntryModels,
   extractMode = detail.statement.conversionType === 'EXTRACT',
   extractId,
+  accountingMode = false,
 }: {
   detail: StatementDetail;
   templates: ExportTemplate[];
@@ -30,47 +42,37 @@ export function StatementModelStep({
   error: string;
   onRetry: () => void;
   onImport?: () => void;
+  initialEntrySelection?: EntryFlowSelection;
+  onEntryReview?: (selection: EntryFlowSelection, preview: EntryModelPreview) => void;
+  onReloadEntryModels?: () => void;
   extractMode?: boolean;
   extractId?: string;
+  accountingMode?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
   const [sourceDetail, setSourceDetail] = useState(detail);
   const [showSource, setShowSource] = useState(false);
+  const [modelKind, setModelKind] = useState<'export' | 'entry'>('export');
+  const [entryOutputTemplateId, setEntryOutputTemplateId] = useState('');
+  const entryOutputTemplates = useApi<EntryOutputTemplate[]>('/accounting/entry-output-templates');
+  const combinedModelValue = modelKind === 'entry'
+    ? `entry:${entryOutputTemplateId}`
+    : templateId ? `export:${templateId}` : '';
   const model = templates.find((item) => item.id === templateId && item.isActive);
   async function prepare() {
     if (!model || busy) return;
     setBusy(true);
     setFailure('');
     try {
-      const adaptation = await reuseValidatedAdaptation(sourceDetail, model.fields);
-      setSourceDetail(adaptation.detail);
-      const result = await request<PreparedStatementExport>(
-        `/statement-imports/${detail.id}/prepare`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            statementVersion: adaptation.detail.version,
-            templateId: model.id,
-            ...(extractMode && adaptation.detail.statement.extracts?.length
-              ? { extractId: extractId ?? adaptation.detail.statement.extracts.at(-1)?.id }
-              : {}),
-          }),
-        },
+      const result = await prepareStatementModel(
+        sourceDetail,
+        model,
+        extractMode,
+        extractId,
+        setSourceDetail,
       );
-      if (adaptation.reused) {
-        result.preview.warnings = [
-          ...result.preview.warnings,
-          {
-            code: 'SAVED_ADAPTATION_REUSED',
-            message:
-              'Un modèle d’extraction enregistré ou un réglage vérifié de même format a été réutilisé.',
-            transactionSequence: null,
-            fieldName: null,
-            sourceField: null,
-          },
-        ];
-      }
+      setSourceDetail(result.detail);
       onPrepared(result);
     } catch (e) {
       setFailure((e as Error).message);
@@ -80,7 +82,13 @@ export function StatementModelStep({
   }
   return (
     <section className="ui-card conversion-model-step" aria-label="Choix du modèle d’exportation">
-      <ConversionSteps current={2} onNavigate={() => onImport?.()} disabled={busy} />
+      <ConversionSteps
+        current={2}
+        accountingMode={accountingMode || (!!model && isAccountingTemplate(model.type))}
+        extractMode={extractMode}
+        onNavigate={() => onImport?.()}
+        disabled={busy}
+      />
       {detail.extraction?.performance && (
         <p role="status" className="muted text-sm">
           Lecture en{' '}
@@ -88,12 +96,11 @@ export function StatementModelStep({
             maximumFractionDigits: 1,
           })}{' '}
           s · {detail.extraction.performance.nativePages} page(s) locales ·{' '}
-          {detail.extraction.performance.paddlePages} PaddleOCR ·{' '}
-          {detail.extraction.performance.aiPages} avec assistance IA. Les données restent à vérifier
+          {detail.extraction.performance.paddlePages} PaddleOCR. Les données restent à vérifier
           avant validation.
         </p>
       )}
-      {['OPENROUTER', 'HYBRID'].includes(detail.extraction?.method ?? '') && (
+      {detail.extraction?.method === 'HYBRID' && (
         <details
           className="rounded-xl border p-3"
           onToggle={(event) => setShowSource(event.currentTarget.open)}
@@ -110,11 +117,11 @@ export function StatementModelStep({
         </span>
         <div>
           <p className="conversion-eyebrow">FORMAT DE SORTIE</p>
-          <h1>Quel fichier souhaitez-vous obtenir ?</h1>
+          <h2>Choisissez un modèle</h2>
           <p>
             {extractMode
-              ? 'Choisissez le même modèle que pour un relevé. Toutes les opérations de l’extrait PDF seront converties, puis présentées pour vérification.'
-              : 'Le résultat sera adapté aux colonnes et aux formats du modèle choisi.'}
+              ? 'Choisissez un format d’export ou une écriture enregistrée pour ce client.'
+              : 'Choisissez un format d’export ou une écriture comptable enregistrée pour ce client.'}
           </p>
         </div>
       </div>
@@ -129,23 +136,44 @@ export function StatementModelStep({
         Modèle d’exportation
         <select
           className="ui-input mt-2"
-          aria-label="Modèle d’exportation"
-          value={templateId}
-          disabled={busy || loading}
-          onChange={(event) => onTemplate(event.target.value)}
+          aria-label="Modèle d’exportation ou d’écriture comptable"
+          value={combinedModelValue}
+          disabled={busy || loading || entryOutputTemplates.loading}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value.startsWith('entry:')) {
+              setEntryOutputTemplateId(value.slice('entry:'.length));
+              setModelKind('entry');
+            } else {
+              setModelKind('export');
+              setEntryOutputTemplateId('');
+              onTemplate(value.startsWith('export:') ? value.slice('export:'.length) : '');
+            }
+          }}
         >
           <option value="">Choisir un modèle…</option>
-          {templates
-            .filter((item) => item.isActive)
-            .map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
+          <optgroup label="Relevés et extraits bancaires">
+            {templates
+              .filter((item) => item.isActive && !isAccountingTemplate(item.type))
+              .map((item) => (
+                <option key={item.id} value={`export:${item.id}`}>
+                  {item.name}
+                </option>
+              ))}
+          </optgroup>
+          <optgroup label="Écritures comptables">
+            {entryOutputTemplates.data
+              ?.filter((item) => item.active)
+              .map((item) => (
+                <option key={item.id} value={`entry:${item.id}`}>
+                  {item.name}
+                </option>
+              ))}
+          </optgroup>
         </select>
       </label>
-      {loading && <p role="status">Chargement des modèles…</p>}
-      {error && (
+      {modelKind === 'export' && loading && <p role="status">Chargement des modèles…</p>}
+      {modelKind === 'export' && error && (
         <div role="alert" className="conversion-alert error">
           {error}
           <Button variant="outline" onClick={onRetry}>
@@ -153,12 +181,14 @@ export function StatementModelStep({
           </Button>
         </div>
       )}
-      {!loading && !error && !templates.some((item) => item.isActive) && (
+      {modelKind === 'export' && !loading && !error && !templates.some((item) => item.isActive) && (
         <p className="conversion-alert warning">
-          Activez ou créez un modèle dans « Modèles d’exportation » pour continuer.
+          {accountingMode
+            ? 'Activez ou créez un modèle Sage 100 — écritures ou Sage X3 — écritures dans « Modèles d’exportation » pour continuer.'
+            : 'Activez ou créez un modèle dans « Modèles d’exportation » pour continuer.'}
         </p>
       )}
-      {model && (
+      {modelKind === 'export' && model && (
         <div className="model-step-fields">
           <div>
             <strong>{model.name}</strong>
@@ -189,22 +219,43 @@ export function StatementModelStep({
           </p>
         </div>
       )}
-      {failure && (
+      {modelKind === 'entry' && initialEntrySelection && onEntryReview && (
+        <AccountingEntryModelFlow
+          detail={detail}
+          initial={{ ...initialEntrySelection, outputTemplateId: entryOutputTemplateId }}
+          extractId={extractId}
+          embedded
+          onReview={onEntryReview}
+          onImport={onImport || (() => undefined)}
+          onReload={onReloadEntryModels || onRetry}
+          onBack={() => {
+            setModelKind('export');
+            setEntryOutputTemplateId('');
+          }}
+        />
+      )}
+      {modelKind === 'export' && failure && (
         <p role="alert" className="conversion-alert error">
           {failure}
         </p>
       )}
-      <div className="model-step-footer">
-        <p>Dates, montants, sens et champs requis contrôlés avant le téléchargement.</p>
-        <Button
-          permission="documents.write"
-          disabled={!model || busy || loading}
-          onClick={() => void prepare()}
-        >
-          {busy ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowRight size={16} />}
-          {busy ? 'Adaptation au modèle…' : 'Afficher le résultat'}
-        </Button>
-      </div>
+      {modelKind === 'export' && (
+        <div className="model-step-footer">
+          <p>Les données seront contrôlées avant l’export.</p>
+          <Button
+            permission="documents.write"
+            disabled={!model || busy || loading}
+            onClick={() => void prepare()}
+          >
+            {busy ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+            {busy
+              ? 'Préparation…'
+              : model && isAccountingTemplate(model.type)
+                ? 'Vérifier le résultat'
+                : 'Afficher le résultat'}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

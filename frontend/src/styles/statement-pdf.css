@@ -16,6 +16,52 @@
   border-radius: 16px;
   background: var(--surface);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: min(780px, 85dvh);
+}
+.statement-pdf-panel.pdf-collapsed {
+  height: auto;
+}
+.pdf-panel-content:not([hidden]),
+.pdf-original-view:not([hidden]),
+.statement-pdf-panel .statement-pdf-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.statement-pdf-panel .pdf-display-toggle,
+.statement-pdf-panel .pdf-view-switch,
+.statement-pdf-panel .pdf-view-note,
+.statement-pdf-panel .pdf-viewer-heading,
+.statement-pdf-panel .pdf-viewer-toolbar {
+  flex-shrink: 0;
+}
+.statement-pdf-panel .pdf-viewer-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overscroll-behavior: contain;
+}
+.statement-pdf-panel .statement-source-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.statement-pdf-panel .statement-source-text > p,
+.statement-pdf-panel .statement-source-text > button {
+  flex-shrink: 0;
+}
+.statement-pdf-panel .statement-source-text > pre {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overscroll-behavior: contain;
 }
 .pdf-viewer-heading {
   padding: 18px;
@@ -58,6 +104,7 @@
 }
 .pdf-page {
   position: relative;
+  margin-inline: auto;
   background: white;
   box-shadow: 0 2px 12px rgb(0 0 0 / 8%);
 }
@@ -166,20 +213,16 @@
   .statement-pdf-panel {
     position: sticky;
     top: 12px;
-    max-height: calc(100dvh - 110px);
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-    scrollbar-width: thin;
   }
-  .pdf-viewer-scroll {
-    max-height: 50vh;
+}
+@media (min-width: 1100px) {
+  .statement-pdf-panel {
+    /* The app scroll area starts below the 56px header. */
+    height: calc(100dvh - 96px);
   }
 }
 @media (max-width: 1199px) {
   .has-pdf-panel > .statement-pdf-panel {
     grid-row: 1;
-  }
-  .pdf-viewer-scroll {
-    max-height: 55vh;
   }
 }

@@ -2,28 +2,34 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
-  Archive,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import {
+  FolderKanban,
   History,
   LayoutDashboard,
-  ContactRound,
-  Landmark,
-  Wallet,
-  FileOutput,
+  Building2,
+  FileSliders,
   ArrowRightLeft,
   Menu,
   X,
   ChevronRight,
   Plus,
   RefreshCw,
-  Users,
+  UsersRound,
   LockKeyhole,
-  Settings2,
+  ScanText,
+  NotebookPen,
 } from 'lucide-react';
 import { useAuth, Can } from './auth-context';
-import { ThemeMenu } from './theme-menu';
+import { ThemeMenu, ThemeToggle } from './theme-menu';
 import { Logo } from './logo';
+import { PageHeader } from './page-header';
 import Image from 'next/image';
 import { confirmDiscard, hasUnsavedChanges } from '@/lib/use-unsaved-changes';
 const groups = [
@@ -31,23 +37,111 @@ const groups = [
     name: 'ESPACE DE TRAVAIL',
     items: [
       { href: '/dashboard', label: 'Vue d’ensemble', icon: LayoutDashboard },
-      { href: '/client-workspace', label: 'Espace clients', icon: Archive },
-      { href: '/history', label: 'Historique', icon: History },
+      { href: '/client-workspace', label: 'Espace clients', icon: FolderKanban },
       { href: '/conversions', label: 'Conversion & export', icon: ArrowRightLeft },
+      { href: '/entry-models', label: 'Modèles d’écritures', icon: NotebookPen },
+      { href: '/banks', label: 'Banques et comptes', icon: Building2 },
     ],
   },
   {
     name: 'RÉFÉRENTIELS',
     items: [
-      { href: '/clients', label: 'Clients', icon: ContactRound },
-      { href: '/banks', label: 'Banques', icon: Landmark },
-      { href: '/bank-accounts', label: 'Comptes bancaires', icon: Wallet },
-      { href: '/templates', label: 'Modèles d’exportation', icon: FileOutput },
-      { href: '/users', label: 'Utilisateurs & permissions', icon: Users },
-      { href: '/settings', label: 'Configuration OCR', icon: Settings2 },
+      { href: '/templates', label: 'Modèles d’exportation', icon: FileSliders },
+      { href: '/history', label: 'Historique', icon: History },
+      { href: '/users', label: 'Utilisateurs & permissions', icon: UsersRound },
+      { href: '/settings', label: 'Configuration OCR', icon: ScanText },
     ],
   },
 ];
+type NavigationGroup = (typeof groups)[number] & { items: (typeof groups)[number]['items'][number][] };
+
+function SidebarNavigation({
+  visibleGroups,
+  pathname,
+  bankFallbackHref,
+  compact,
+  mobile,
+  onNavigate,
+}: {
+  visibleGroups: NavigationGroup[];
+  pathname: string;
+  bankFallbackHref: string;
+  compact: boolean;
+  mobile: boolean;
+  onNavigate: () => void;
+}) {
+  const navRef = useRef<HTMLElement>(null);
+  const indicatorRef = useRef<HTMLSpanElement>(null);
+  const linksKey = visibleGroups.flatMap((group) => group.items.map((item) => item.href)).join('|');
+
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const indicator = indicatorRef.current;
+    if (!nav || !indicator) return;
+
+    const updateIndicator = () => {
+      const activeLink = nav.querySelector<HTMLElement>('.nav-link.active');
+      if (!activeLink) {
+        indicator.style.visibility = 'hidden';
+        return;
+      }
+      indicator.style.height = `${activeLink.offsetHeight}px`;
+      indicator.style.transform = `translateY(${activeLink.offsetTop}px)`;
+      indicator.style.visibility = 'visible';
+    };
+
+    updateIndicator();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateIndicator);
+      return () => window.removeEventListener('resize', updateIndicator);
+    }
+    const observer = new ResizeObserver(updateIndicator);
+    observer.observe(nav);
+    nav.querySelectorAll('.nav-link').forEach((link) => observer.observe(link));
+    return () => observer.disconnect();
+  }, [pathname, linksKey, mobile, compact]);
+
+  const isNavActive = (href: string) =>
+    pathname === href || (href === '/banks' && ['/clients', '/bank-accounts'].includes(pathname));
+
+  return (
+    <nav
+      ref={navRef}
+      id={mobile ? 'mobile-navigation' : 'desktop-navigation'}
+      aria-label="Navigation principale"
+      className="sidebar-nav"
+      tabIndex={0}
+    >
+      <span ref={indicatorRef} className="nav-active-indicator" aria-hidden="true" />
+      {visibleGroups.map((group) => (
+        <div key={group.name}>
+          <p className="nav-caption">{group.name}</p>
+          <div>
+            {group.items.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href === '/banks' ? bankFallbackHref : href}
+                aria-label={label}
+                title={compact && !mobile ? label : undefined}
+                aria-current={isNavActive(href) ? 'page' : undefined}
+                className={`nav-link ${isNavActive(href) ? 'active' : ''}`}
+                onClick={onNavigate}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  <Icon size={19} strokeWidth={1.8} />
+                </span>
+                <span className="nav-label">{label}</span>
+                {isNavActive(href) && (
+                  <ChevronRight size={15} className="nav-chevron ml-auto" aria-hidden="true" />
+                )}
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
+  );
+}
 function subscribeSidebar(listener: () => void) {
   window.addEventListener('storage', listener);
   window.addEventListener('sidebar-change', listener);
@@ -69,6 +163,7 @@ function sidebarSnapshot() {
 }
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const previousPathname = useRef(pathname);
   const { user, can } = useAuth();
   const routePermission: Record<string, string> = {
     '/dashboard': 'dashboard.read',
@@ -78,8 +173,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/templates': 'templates.read',
     '/client-workspace': 'documents.read',
     '/conversions': 'documents.read',
+    '/entry-models': 'documents.read',
+    '/entry-model-results': 'documents.read',
     '/settings': 'admin',
-    '/history': 'documents.read',
+    '/history': 'history.read',
   };
   const allowed = ['/users', '/settings'].includes(pathname)
     ? user?.role === 'Admin'
@@ -90,12 +187,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       items: group.items.filter((item) =>
         ['/users', '/settings'].includes(item.href)
           ? user?.role === 'Admin'
-          : can(routePermission[item.href]),
+          : item.href === '/banks'
+            ? can('banks.read') || can('accounts.read') || can('clients.read')
+            : can(routePermission[item.href]),
       ),
     }))
     .filter((group) => group.items.length);
   const drawer = useRef<HTMLDialogElement>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  useLayoutEffect(() => {
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
+    const resetScroll = () => {
+      window.scrollTo(0, 0);
+      document.scrollingElement?.scrollTo(0, 0);
+      document.querySelector<HTMLElement>('.app-scroll')?.scrollTo(0, 0);
+    };
+    resetScroll();
+    const frame = window.requestAnimationFrame(resetScroll);
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname]);
   const compact = useSyncExternalStore(subscribeSidebar, sidebarSnapshot, () => false);
   const toggleSidebar = () => {
     sidebarFallback = !compact;
@@ -114,7 +225,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     desktop.addEventListener('change', closeMobileMenu);
     return () => desktop.removeEventListener('change', closeMobileMenu);
   }, []);
-  const active = groups.flatMap((g) => g.items).find((i) => i.href === pathname);
+  const active =
+    pathname === '/clients'
+      ? { label: 'Clients' }
+      : pathname === '/banks'
+        ? { label: 'Banques' }
+        : pathname === '/bank-accounts'
+          ? { label: 'Comptes bancaires' }
+          : pathname === '/profile'
+            ? { label: 'Mon profil' }
+          : groups.flatMap((g) => g.items).find((i) => i.href === pathname);
   const navigation = (mobile = false) => (
     <>
       <div className="sidebar-header">
@@ -165,45 +285,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         )}
       </div>
-      <nav
-        id={mobile ? 'mobile-navigation' : 'desktop-navigation'}
-        aria-label="Navigation principale"
-        className="sidebar-nav"
-        tabIndex={0}
-      >
-        {visibleGroups.map((g) => (
-          <div key={g.name}>
-            <p className="nav-caption">{g.name}</p>
-            <div>
-              {g.items.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-label={label}
-                  title={compact && !mobile ? label : undefined}
-                  aria-current={pathname === href ? 'page' : undefined}
-                  className={`nav-link ${pathname === href ? 'active' : ''}`}
-                  onClick={() => drawer.current?.close()}
-                >
-                  <span className="nav-icon" aria-hidden="true">
-                    <Icon size={19} strokeWidth={1.8} />
-                  </span>
-                  <span className="nav-label">{label}</span>
-                  {pathname === href && (
-                    <ChevronRight size={15} className="nav-chevron ml-auto" aria-hidden="true" />
-                  )}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))}
-      </nav>
+      <SidebarNavigation
+        visibleGroups={visibleGroups}
+        pathname={pathname}
+        bankFallbackHref={can('accounts.read') ? '/bank-accounts' : '/clients'}
+        compact={compact}
+        mobile={mobile}
+        onNavigate={() => drawer.current?.close()}
+      />
     </>
   );
   return (
-    <div
-      className={`app-shell ${compact ? 'sidebar-compact' : ''} ${pathname === '/conversions' ? 'app-shell-browser-scroll' : ''}`}
-    >
+    <div className={`app-shell app-shell-browser-scroll ${compact ? 'sidebar-compact' : ''}`}>
       <a href="#main-content" className="skip-link">
         Aller au contenu
       </a>
@@ -268,28 +361,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               </Button>
             </Can>
+            <ThemeToggle />
             <ThemeMenu />
           </div>
         </header>
-        <div
-          className="app-scroll"
-          key={pathname}
-          tabIndex={0}
-          role="region"
-          aria-label="Contenu de la page"
-        >
-          <main id="main-content" className="main-content" tabIndex={-1}>
+        <div className="app-scroll" role="region" aria-label="Contenu de la page">
+          <main id="main-content" className="main-content workspace-route-content" tabIndex={-1}>
             {allowed ? (
               children
             ) : (
-              <section className="ui-card">
-                <LockKeyhole className="accent-text mb-4" />
-                <h1 className="ui-title">Accès limité</h1>
-                <p className="muted mt-3">
-                  Votre profil ne permet pas de consulter cette page. Contactez un administrateur
-                  pour modifier vos permissions.
-                </p>
-              </section>
+              <div className="ui-page">
+                <PageHeader
+                  eyebrow="Espace de travail"
+                  title="Accès limité"
+                  description="Votre profil ne permet pas de consulter cette page. Contactez un administrateur pour modifier vos permissions."
+                  icon={LockKeyhole}
+                />
+              </div>
             )}
           </main>
           <footer className="app-footer">

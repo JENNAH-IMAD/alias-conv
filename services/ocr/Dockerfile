@@ -3,8 +3,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 COPY services/ocr/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY services/ocr/app.py ./
+COPY services/ocr/app.py services/ocr/structure_engine.py ./
 ENV PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 ENV WEB_CONCURRENCY=2 OCR_CPU_THREADS=2
+ENV OCR_PIPELINE=structure OCR_LAYOUT_MODEL=PP-DocLayout-M
 EXPOSE 8091
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8091", "--no-access-log"]

@@ -6,6 +6,9 @@ namespace BankStatementConverter.API;
 [ApiController, Route("api/banks")]
 public class BanksController(BankService service) : ControllerBase
 {
+    [HttpGet("catalog")]
+    public IReadOnlyList<BankCatalogEntry> Catalog() => MoroccanBankCatalog.SelectableEntries
+        .Select(entry => new BankCatalogEntry(entry.Name, entry.Code)).ToArray();
     [HttpGet] public Task<PageResult<BankDto>> List(CancellationToken ct, int page = 1, int pageSize = 20, string? search = null, string sort = "name") => service.ListAsync(page, pageSize, search, sort, ct);
     [HttpGet("{id:guid}")] public Task<BankDto> Get(Guid id, CancellationToken ct) => service.GetAsync(id, ct);
     [HttpPost]

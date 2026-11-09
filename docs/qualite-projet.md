@@ -1,142 +1,138 @@
-# Analyse et maintenance du projet Alias
+# Architecture et maintenance d’Alias
 
-Note de mise à jour : les suites de tests automatisés et leurs configurations ont été retirées pour une vérification manuelle. Les bilans de tests ci-dessous sont historiques.
+Analyse de la copie de travail du 21 octobre 2026. Les modifications existantes
+ont été conservées ; aucun historique Git ni donnée bancaire n’a été réinitialisé.
 
-Analyse du 16 octobre 2026, réalisée sur la copie de travail existante, avec ses
-modifications non validées dans Git. Les résultats ci-dessous concernent cette copie.
-
-## Architecture
-
-La séparation actuelle est adaptée au produit et mérite d'être conservée :
+## Organisation
 
 | Dossier | Responsabilité |
 | --- | --- |
-| `backend/BankStatementConverter.Domain` | Entités, relevés et règles communes sur les montants |
-| `backend/BankStatementConverter.Application` | Contrats, permissions et interfaces d'extraction/export |
-| `backend/BankStatementConverter.Infrastructure` | PostgreSQL, stockage, OCR, normalisation et génération des exports |
-| `backend/BankStatementConverter.API` | HTTP, authentification, autorisations et assemblage des services |
-| `frontend/src/app` | Routes Next.js, layout et styles de base |
-| `frontend/src/components` | Composants de l'interface, dont les primitives dans `ui` |
-| `frontend/src/lib` | Fonctions réutilisables et logique d'édition côté navigateur |
-| `frontend/src/services` | Accès API, contrats TypeScript et adaptation des relevés |
-| `frontend/src/styles` | Styles partagés et adaptations des différents écrans |
-| `services/ocr` | Service Python de reconnaissance, indépendant des règles bancaires |
-| `tools`, `scripts`, `installer` | Utilitaires, lancement, fabrication et installation |
+| `backend/BankStatementConverter.Domain` | Entités, relevés, utilisateurs et règles communes sur les montants |
+| `backend/BankStatementConverter.Application` | Contrats HTTP/métier, permissions et interfaces |
+| `backend/BankStatementConverter.Infrastructure` | PostgreSQL, stockage, extraction, contrôles et exportation |
+| `backend/BankStatementConverter.API` | Contrôleurs, authentification et assemblage des services |
+| `frontend/src/app` | Routes Next.js et points d’entrée |
+| `frontend/src/components` | Interface, édition et primitives partagées |
+| `frontend/src/lib` | Logique d’édition et fonctions réutilisables |
+| `frontend/src/services` | Accès API et contrats TypeScript |
+| `frontend/src/styles` | Styles et adaptations des écrans |
+| `services/ocr` | Lecture locale Python et reconstruction des tableaux |
+| `tools`, `scripts`, `installer` | Maintenance, lancement et livraison |
 
-Les migrations EF Core, fichiers golden, ressources PDF/EMA, polices et licences
-ont une utilité réelle. Leur absence d'import TypeScript ne justifie pas leur suppression.
-Les dépendances de production du frontend ont toutes un usage identifié dans le code
-ou les imports CSS ; aucune n'a été retirée arbitrairement.
+La chaîne de traitement locale sépare la reconnaissance du document, son
+interprétation bancaire et la génération du fichier comptable. PaddleOCR
+AI Studio reste un moteur facultatif. Les clés, poids OCR et paramètres
+propres au poste ne font pas partie des sources à nettoyer.
 
-## Nettoyage réalisé
+## Audit et nettoyage
 
-Sept fichiers sans import entrant ont été retirés après recherche de leurs références :
+- Le graphe des imports frontend ne révèle aucun module source isolé hors des
+  points d’entrée Next.js. Les exports TypeScript examinés ont des références.
+- Chaque dépendance frontend de production a un usage dans les imports ou CSS.
+- Les types C# à occurrence unique sont des contrôleurs découverts par ASP.NET,
+  des points d’entrée, des extensions de démarrage ou la fabrique EF Core.
+  Ils ne sont pas du code mort.
+- Soixante-huit sélecteurs CSS de l’ancienne fiche bancaire et des anciennes
+  cartes de lancement ont été supprimés après recherche dans les sources.
+  Les sélecteurs partagés encore utilisés sont conservés.
+- Le formatage C# a été harmonisé sans modifier les migrations générées.
+- La configuration `Storage:MaxBytes`, qui n’était plus lue, a été retirée.
+  Les limites propres aux photos et logos restent pertinentes et actives.
+- Le lanceur desktop WinForms ne charge plus la référence WPF ajoutée par
+  WebView2, qui provoquait un conflit de versions de `WindowsBase`. Les références
+  Core et WinForms du navigateur sont conservées.
+- Les anciens diagnostics, outils ponctuels de revue, fichiers générés et archives
+  d’installation Ollama sont pris en charge par le nettoyage reproductible.
+- Le README et les guides OCR ont été alignés sur la chaîne actuelle. Les anciens
+  résultats de tests et les références à des scripts disparus ont été retirés.
 
-- `frontend/src/components/client-statement-viewer.tsx`
-- `frontend/src/components/dashboard-conversion-resources.tsx`
-- `frontend/src/components/extraction-profiles.tsx`
-- `frontend/src/components/statement-extraction.tsx`
-- `frontend/src/components/statement-transaction-editor.tsx`
-- `frontend/src/components/paddle-document-reading.tsx`
-- `frontend/src/components/ui/table.tsx`
+Les migrations EF Core, les polices et leurs licences, les ressources PDF/EMA,
+les logos, les modèles d’exportation et les quatre projets `tools` sont utiles.
+Leur absence d’import TypeScript ne justifie pas leur suppression.
 
-Une seconde analyse des imports TypeScript ne trouve plus de module isolé hors des
-points d'entrée conventionnels de Next.js. Cette analyse concerne les fichiers entiers,
-pas une preuve d'utilisation de chaque export ni de chaque sélecteur CSS.
-Les API de profils et d'extraction restent utilisées par les services et sont conservées.
+## Contrôles reproductibles
 
-Le démarrage de l'API est réparti entre :
+Depuis la racine, sous Windows :
 
-- `Program.cs`, qui expose l'ordre de démarrage et des middlewares ;
-- `ServiceRegistration.cs`, qui regroupe les services HTTP, de sécurité, de catalogue et de conversion ;
-- `ApplicationSetup.cs`, qui gère les erreurs HTTP, la protection des écritures et l'initialisation de la base.
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/Check-Project.ps1 -Production
+```
 
-Les durées de vie des services, l'ordre des middlewares, les règles d'accès et les
-options OCR existantes ont été conservés. Les commentaires expliquent notamment la
-persistance des clés, la protection des écritures et la gestion des clients OCR.
+Le script s’arrête au premier échec. Il vérifie la compilation de la solution .NET,
+de `ProjectSnapshot`, `DesktopApp` et `ServerManager`, le formatage C#, la syntaxe
+PowerShell, les types TypeScript, ESLint sans avertissements, Prettier et, avec
+`-Production`, la compilation Next.js. Les artefacts .NET sont isolés dans
+`.local/check-project` pour ne pas remplacer les fichiers d’un serveur actif.
+Le build Next.js utilise `.next-runtime`.
 
-Les diagnostics du relevé sont isolés dans `statement-diagnostics.tsx`. Un état React
-jamais lu et les branches rendues inaccessibles par `allowExportErrors = true` ont été
-supprimés. Le téléchargement conserve son comportement existant « avec erreurs ».
+La syntaxe Python a également été vérifiée lors de cet audit. La revue visuelle
+du parcours de conversion couvre ordinateur, tablette et mobile, les thèmes clair
+et sombre, le PDF original/converti, le texte source et les formulaires de correction.
+Cette revue utilise des réponses API contrôlées issues d’un relevé existant ; elle
+ne remplace pas une conversion réelle de bout en bout.
 
-Quatorze feuilles de styles sont regroupées dans `src/styles`, en conservant leur
-ordre d'import pour préserver la cascade. `globals.css` reste le point d'entrée de
-Tailwind et du thème de base. Aucun sélecteur n'a été supprimé sur une simple intuition.
+Les anciennes suites de tests automatisés sont retirées, conformément au choix
+du projet. La vérification métier se fait manuellement avec les documents originaux.
+Cet audit ne valide ni tous les formats bancaires, ni tous les fournisseurs OCR,
+ni l’installation complète des livrables Windows/Linux.
 
-Le formatage C# utilise quatre espaces et développe les blocs/instructions auparavant
-compactés sur une ligne. Les migrations générées sont exclues de ce passage.
-Les projets XML sont indentés, et le frontend suit sa configuration Prettier existante.
-La casse du dossier `Fixtures` dans le projet de tests a été corrigée pour sa copie
-sur les systèmes sensibles à la casse.
+## Nettoyage reproductible
 
-ESLint exclut désormais `.next-runtime` et les ressources PDF.js générées : le premier
-contrôle analysait ces fichiers tiers et remontait 13 713 diagnostics. Les caches,
-rapports de tests, installations locales et sauvegardes sont mieux exclus de Git
-et/ou du contexte Docker. Les données locales existantes ont été conservées.
+```powershell
+# Consulter les cibles, sans suppression.
+powershell -ExecutionPolicy Bypass -File scripts/Cleanup-GeneratedFiles.ps1
+# Supprimer les cibles vérifiées.
+powershell -ExecutionPolicy Bypass -File scripts/Cleanup-GeneratedFiles.ps1 -Execute
+```
 
-Les liens de documentation pointant vers des fichiers absents ont été corrigés.
-`scripts/Test-Project.ps1` regroupe les contrôles reproductibles et s'arrête au premier
-échec. Il ne masque pas les échecs déjà présents.
+Le script ne dépend plus d’un manifeste temporaire. Il vérifie les chemins
+absolus, reste dans le dépôt, conserve les fichiers suivis par Git, les dossiers
+utilisés par un processus et ceux contenant une jonction ou un lien symbolique.
+Les erreurs de suppression sont signalées, sans arrêter les services.
 
-## Vérifications et limites
+Les dossiers `.local`, `output`, `tmp` et `tools` ne doivent pas être supprimés
+en bloc :
 
-| Contrôle | Résultat observé |
-| --- | --- |
-| Compilation de la solution .NET | Réussie, sans avertissement ni erreur |
-| Types TypeScript | Réussite |
-| ESLint avec `--max-warnings=0` | Réussite après correction des exclusions |
-| Prettier | Réussite |
-| Compilation de production Next.js | Réussite |
-| Tests .NET hors intégration | 213 réussites, 70 échecs avant et après nettoyage ; mêmes noms de tests en échec |
-| Sélection de tests navigateur | 6 réussites sur 7 |
-| Démarrage HTTP de l'API sans base | Démarrage réussi en développement ; réponses 503 pour la santé, 401 sans session et 400 sans en-tête d'écriture |
+- `.local` contient notamment Python, les modèles OCR et des sauvegardes ;
+- `output/runtime` est utilisé par les lanceurs serveur et desktop ;
+- `output/installers` contient les livrables et les snapshots peuvent contenir des données ;
+- `tmp` contient encore des sauvegardes et des documents de référence ;
+- `tools` contient les programmes de livraison et de maintenance.
 
-Les six parcours navigateur réussis couvrent l'édition des mouvements, les tableaux
-sur ordinateur/mobile, l'édition des utilisateurs, les détails d'historique, l'historique
-vide et le dashboard sombre/mobile.
-Le test navigateur restant attend un bouton « Télécharger » et une case d'activation
-qui ne correspondent plus au parcours existant « Télécharger avec erreurs ».
-Le téléchargement actuel redirige également vers l'espace client : les assertions
-historiques de ce parcours doivent être réexaminées ensemble.
+Le passage du 21 octobre a supprimé 32 cibles, soit 1 460,9 Mio de fichiers.
+Après nettoyage, les endpoints de santé de l’API et du service OCR, ainsi que
+la route de session de l’interface, répondent HTTP 200. La compilation .NET et
+des outils se termine sans erreur ni avertissement ; TypeScript, ESLint,
+Prettier et la compilation de production Next.js réussissent.
 
-Les tests d'intégration PostgreSQL, les appels OCR réels et la fabrication complète
-des installateurs n'ont pas été exécutés. Les tests navigateur utilisent des réponses
-API simulées. Ils ne valident pas une conversion bancaire réelle de bout en bout.
+## Conventions et suite de la maintenance
 
-## Points restant à traiter, par priorité
+Les règles comptables, signes, décimales, encodages et migrations ne doivent pas
+être simplifiés sur la seule base d’une recherche de texte. Garder la logique
+HTTP dans les contrôleurs, la conversion dans les services et les paramètres
+locaux hors de Git. Vérifier les références par chemin et les découvertes par
+framework avant de supprimer un fichier.
 
-1. **Rendre les tests bancaires fiables.** Parmi les 70 échecs initiaux, 60 signalent
-   l'absence des PDF attendus dans un dossier racine commençant par `relv`. Les dix
-   autres concernent les signes des soldes Sage X3, la représentation de zéro, les
-   fichiers golden, les métadonnées ou les limites de l'aperçu. Il faut confronter les
-   attentes au contrat métier avant de modifier les montants, signes ou références.
-   Le nettoyage ne change pas ces règles pour faire artificiellement passer les tests.
-2. **Actualiser les scénarios navigateur obsolètes.** La suite contient 100 tests ;
-   seule une sélection de sept a été exécutée pendant ce nettoyage. L'ancien parcours
-   de téléchargement ne représente plus l'interface actuelle.
-3. **Poursuivre le découpage de `statement-workspace.tsx`.** Après extraction des
-   diagnostics, ce composant reste volumineux et gère encore l'édition, la sélection,
-   l'aperçu et le téléchargement. Séparer ces responsabilités par étapes avec des
-   scénarios de non-régression dédiés.
-4. **Réduire les superpositions CSS.** Le regroupement rend les styles plus faciles à
-   retrouver, mais les feuilles de retouches se superposent encore. Une consolidation
-   nécessite des comparaisons visuelles des états clair/sombre, mobile et édition.
-5. **Aligner les outils de livraison sur les contrôles communs.** La solution contient
-   `HistoryMaintenance`, tandis que les autres outils sont construits par les scripts
-   d'installation. Leur compilation et leurs tests d'installation doivent faire partie
-   d'une validation de livraison distincte.
+`statement-workspace.tsx` reste volumineux. Son découpage et une consolidation
+plus large des styles méritent des changements dédiés, accompagnés d’une revue
+des états d’édition, des exports et des écrans clair/sombre. La suppression des
+anciens sélecteurs ne constitue pas une preuve que chaque sélecteur restant est utilisé.
+Les dépendances n’ont pas été mises à niveau arbitrairement pendant ce nettoyage.
 
-## Conventions pour les prochaines modifications
 
-- Garder les contrôleurs centrés sur HTTP et l'autorisation ; placer la logique de
-  conversion et de persistance dans les services existants.
-- Utiliser des noms qui expriment l'intention et extraire une responsabilité cohérente
-  quand une fonction ou un composant devient difficile à parcourir.
-- Commenter les raisons, contraintes comptables et cas ambigus, sans paraphraser le code.
-- Préserver la précision décimale, les signes, les formats d'encodage et les octets
-  des exports ; vérifier leurs tests métier avant toute simplification.
-- Vérifier les imports, les points d'entrée des frameworks, les scripts de génération
-  et les ressources chargées par chemin avant de supprimer un fichier.
-- Exclure les résultats générés des outils de qualité et garder les secrets/configurations
-  propres au poste hors du dépôt.
-- Compiler la solution, contrôler les types TypeScript et vérifier manuellement les conversions avec des PDF réels avant livraison.
+### Filtrage des conversions
+
+Dans « Mouvements & filtres », la grille reprend les colonnes ordonnées du modèle d’exportation actif. Chaque colonne possède une recherche sur sa valeur formatée. Les recherches se combinent par ET, sans distinction de casse ou d’accents, sur toutes les lignes avant pagination. Les soldes d’ouverture et de clôture du modèle ne sont pas des mouvements sélectionnables.
+
+« Enregistrer la sélection » transmet les filtres de colonnes et l’empreinte du modèle au serveur. Celui-ci refait le filtrage avec le moteur d’exportation, conserve les mouvements retenus et leurs totaux décimaux. L’aperçu, le PDF de la sélection et le téléchargement utilisent cette sélection sauvegardée. Une modification du modèle depuis la lecture des colonnes entraîne un conflit explicite avant sauvegarde. « Tout afficher » revient au document complet sans supprimer les sauvegardes.
+
+Les anciens extraits restent lisibles. Leur ancien filtrage par libellé n’est plus présenté dans l’interface. Les corrections des valeurs source sont accessibles dans une section repliable ; elles doivent être enregistrées avant de filtrer.
+
+
+### Journal d’activité
+
+La page Historique sépare les actions sur les relevés et les modèles d’extraction dans deux onglets. Les événements sont regroupés par date, les détails restent repliés et les suppressions sont réservées aux administrateurs avec confirmation. Les dates affichées et les bornes du filtre de période utilisent UTC.
+
+La recherche (fichier, client, banque, compte ou auteur), le type d’action et les dates s’appliquent côté serveur avant le comptage et la pagination. `HistoryActivityQuery` est partagé par la lecture et la suppression d’une sélection afin de conserver le même périmètre, y compris sur toutes les pages. La suppression d’une action conserve les relevés, PDF, modèles et fichiers exportés.
+
+Le service de lecture renvoie `filterVersion: 1`. Si le frontend rencontre un ancien backend, il bloque l’affichage et la sélection des résultats filtrés plutôt que de présenter une liste non filtrée. Les suppressions filtrées utilisent la route distincte `delete-filtered-selection` : un ancien backend ne peut pas les exécuter en ignorant les nouveaux critères.

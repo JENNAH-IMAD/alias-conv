@@ -11,7 +11,11 @@ export const dashboardStatuses: Record<string, { label: string; color: string }>
 export const statusInfo = (status: string) =>
   dashboardStatuses[status] ?? { label: status, color: '#8996ae' };
 const shortDate = (date: string) =>
-  new Date(`${date}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  new Date(`${date}T12:00:00Z`).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
 const subscribeToChartWidth = (callback: () => void) => {
   const query = window.matchMedia('(max-width: 650px)');
   query.addEventListener('change', callback);
@@ -37,8 +41,25 @@ export function ActivityChart({ data }: { data: Dashboard['activity'] }) {
   );
   const x = (index: number) => left + (index * (right - left)) / Math.max(1, data.length - 1);
   const y = (value: number) => bottom - (value * (bottom - top)) / max;
-  const path = (field: 'imports' | 'exports') =>
-    data.map((day, index) => `${index ? 'L' : 'M'}${x(index)},${y(day[field])}`).join(' ');
+  const smoothPath = (values: number[]) => {
+    const points = values.map((value, index) => ({ x: x(index), y: y(value) }));
+    if (points.length < 3) return points.map((point, index) => `${index ? 'L' : 'M'}${point.x},${point.y}`).join(' ');
+    return points.reduce((result, point, index) => {
+      if (!index) return `M${point.x},${point.y}`;
+      const previous = points[index - 1];
+      const before = points[index - 2] ?? previous;
+      const next = points[index + 1] ?? point;
+      const c1x = previous.x + (point.x - before.x) / 6;
+      const c1y = previous.y + (point.y - before.y) / 6;
+      const c2x = point.x - (next.x - previous.x) / 6;
+      const c2y = point.y - (next.y - previous.y) / 6;
+      return `${result} C${c1x},${c1y} ${c2x},${c2y} ${point.x},${point.y}`;
+    }, '');
+  };
+  const importsPath = smoothPath(data.map((day) => day.imports));
+  const exportsPath = smoothPath(data.map((day) => day.exports));
+  const target = Math.max(1, Math.round(data.reduce((sum, day) => sum + day.imports, 0) / Math.max(1, data.length)));
+  const targetPath = smoothPath(data.map(() => target));
   const hasActivity = data.some((day) => day.imports || day.exports);
   const selected = active === null ? null : data[active];
   return (
@@ -57,7 +78,7 @@ export function ActivityChart({ data }: { data: Dashboard['activity'] }) {
             </span>
           </>
         ) : (
-          <span>Survolez le graphique pour consulter une journée.</span>
+          <span>Survolez ou sélectionnez une journée pour voir les détails.</span>
         )}
       </div>
       <svg
@@ -69,8 +90,8 @@ export function ActivityChart({ data }: { data: Dashboard['activity'] }) {
       >
         <defs>
           <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3478f6" stopOpacity=".22" />
-            <stop offset="100%" stopColor="#3478f6" stopOpacity=".01" />
+            <stop offset="0%" stopColor="#4d73f6" stopOpacity=".2" />
+            <stop offset="100%" stopColor="#4d73f6" stopOpacity=".015" />
           </linearGradient>
         </defs>
         {[0, 1, 2, 3, 4].map((tick) => (
@@ -95,24 +116,28 @@ export function ActivityChart({ data }: { data: Dashboard['activity'] }) {
         {hasActivity && (
           <>
             <path
-              d={`${path('imports')} L${x(data.length - 1)},${bottom} L${left},${bottom} Z`}
+              className="overview-chart-area"
+              d={`${importsPath} L${x(data.length - 1)},${bottom} L${left},${bottom} Z`}
               fill={`url(#${gradient})`}
             />
             <path
-              d={path('imports')}
-              stroke="#3478f6"
-              strokeWidth="3"
+              className="overview-chart-import-line"
+              d={importsPath}
+              stroke="#4169f5"
+              strokeWidth="3.2"
               fill="none"
               strokeLinejoin="round"
             />
             <path
-              d={path('exports')}
-              stroke="#19a68e"
+              className="overview-chart-export-line"
+              d={exportsPath}
+              stroke="#18a991"
               strokeWidth="2.5"
               strokeDasharray="6 4"
               fill="none"
               strokeLinejoin="round"
             />
+            <path className="overview-chart-target-line" d={targetPath} fill="none" stroke="#8291aa" strokeWidth="2" strokeDasharray="5 5" />
           </>
         )}
         {data
@@ -156,7 +181,7 @@ export function ActivityChart({ data }: { data: Dashboard['activity'] }) {
               cx={x(active)}
               cy={y(selected.imports)}
               r="5"
-              fill="#3478f6"
+              fill="#4169f5"
               stroke="var(--surface)"
               strokeWidth="2"
             />
@@ -212,60 +237,38 @@ export function ActivityChart({ data }: { data: Dashboard['activity'] }) {
 export function StatusChart({ statuses }: { statuses: Dashboard['statuses'] }) {
   const total = statuses.reduce((sum, item) => sum + item.count, 0);
   const parts = statuses.filter((item) => item.count > 0);
+  const validated = statuses.find((item) => item.status === 'VALIDATED')?.count ?? 0;
+  const progress = total ? Math.round((validated / total) * 100) : 0;
+  const statusSummary = validated
+    ? `${validated.toLocaleString('fr-FR')} document${validated === 1 ? '' : 's'} validé${validated === 1 ? '' : 's'}`
+    : 'Aucun document validé';
   return (
     <div className="overview-status-body">
       <div className="overview-donut">
         <svg
-          viewBox="0 0 180 180"
+          viewBox="0 0 120 120"
           role="img"
-          aria-label={`Répartition des ${total} documents bancaires par statut`}
+          aria-label={`${progress} % des documents sont validés`}
         >
-          <circle cx="90" cy="90" r="70" fill="none" stroke="var(--surface-alt)" strokeWidth="19" />
-          {statuses
-            .filter((item) => item.count > 0)
-            .map((item, index) => {
-              const length = (item.count / total) * 100;
-              const start =
-                (parts.slice(0, index).reduce((sum, previous) => sum + previous.count, 0) / total) *
-                100;
-              return (
-                <circle
-                  key={item.status}
-                  cx="90"
-                  cy="90"
-                  r="70"
-                  pathLength={100}
-                  fill="none"
-                  stroke={statusInfo(item.status).color}
-                  strokeWidth="19"
-                  strokeDasharray={`${Math.max(0, length - (length < 100 ? Math.min(1.3, length / 4) : 0))} 100`}
-                  strokeDashoffset={-start}
-                  transform="rotate(-90 90 90)"
-                >
-                  <title>
-                    {statusInfo(item.status).label} : {item.count}
-                  </title>
-                </circle>
-              );
-            })}
+          <circle className="overview-progress-track" cx="60" cy="60" r="48" fill="none" strokeWidth="12" />
+          <circle className="overview-progress-value" cx="60" cy="60" r="48" pathLength={100} fill="none" stroke="var(--dashboard-accent, #315eea)" strokeWidth="12" strokeDasharray="0 100" style={{ '--progress-value': `${progress} 100` } as React.CSSProperties} transform="rotate(-90 60 60)">
+            <title>{statusSummary}</title>
+          </circle>
         </svg>
-        <div>
-          <strong>{total.toLocaleString('fr-FR')}</strong>
-          <span>documents</span>
+        <div className="overview-progress-center">
+          <strong>{progress}%</strong>
         </div>
       </div>
-      <ul className="overview-status-list">
-        {statuses.map((item) => (
-          <li key={item.status}>
-            <span>
-              <i className="overview-dot" style={{ background: statusInfo(item.status).color }} />
-              {statusInfo(item.status).label}
-            </span>
-            <strong>{item.count.toLocaleString('fr-FR')}</strong>
-            <small>{total ? Math.round((item.count / total) * 100) : 0} %</small>
-          </li>
-        ))}
-      </ul>
+      <div className="overview-progress-copy">
+        <span className="overview-progress-label">Documents validés</span>
+        <strong>{statusSummary}</strong>
+        <span className="overview-progress-total">sur {total.toLocaleString('fr-FR')} document{total === 1 ? '' : 's'} au total</span>
+        <div className="overview-progress-breakdown">
+          {parts.map((item) => (
+            <span key={item.status}><i className="overview-dot" style={{ background: statusInfo(item.status).color }} />{statusInfo(item.status).label}<b>{item.count.toLocaleString('fr-FR')}</b></span>
+          ))}
+        </div>
+      </div>
       {!total && (
         <p className="overview-empty-note">La répartition apparaîtra après votre premier import.</p>
       )}

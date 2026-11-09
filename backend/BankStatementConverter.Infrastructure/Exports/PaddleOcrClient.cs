@@ -31,18 +31,40 @@ public sealed class PaddleOcrClient(HttpClient http, IConfiguration config, OcrR
                 throw new AppException(response.StatusCode is System.Net.HttpStatusCode.UnprocessableEntity or System.Net.HttpStatusCode.BadRequest ? 422 : 503,
                 "Le moteur OCR n’a pas pu lire ce PDF. Vérifiez qu’il est déverrouillé et lisible.");
             var document = await response.Content.ReadFromJsonAsync<PdfTextDocument>(cancellationToken: deadline.Token);
-            if (document == null || document.Pages is not { Count: > 0 } || document.Pages.Any(p => p == null || p.Boxes == null || p.Boxes.Count > 100000
+            if (document == null || document.SourcePageCount is <= 0 || document.Pages is not { Count: > 0 } || document.Pages.Any(p => p == null || p.Boxes == null || p.Boxes.Count > 100000
                 || !double.IsFinite(p.Width) || !double.IsFinite(p.Height) || p.Width <= 0 || p.Height <= 0
                 || p.Boxes.Any(b => b == null || b.Text == null || b.Text.Length > 10000 || !double.IsFinite(b.Left) || !double.IsFinite(b.Right) || !double.IsFinite(b.Top) || !double.IsFinite(b.Bottom)
                     || b.Left > b.Right || b.Top > b.Bottom || (b.Confidence.HasValue && !double.IsFinite(b.Confidence.Value)) || b.Confidence is < 0 or > 1))
                 || document.Pages.Sum(p => p.Boxes.Count) > 500000)
                 throw new AppException(502, "La réponse du moteur OCR est invalide.");
             if (document.Pages.Select(page => page.Number).Distinct().Count() != document.Pages.Count
+                || document.Pages.Any(page => page.Number < 1)
+                || pages == null && !Enumerable.Range(1, document.SourcePageCount ?? document.Pages.Count).SequenceEqual(document.Pages.Select(page => page.Number).Order())
                 || pages != null && !pages.Order().SequenceEqual(document.Pages.Select(page => page.Number).Order()))
                 throw new AppException(502, "Le moteur OCR n’a pas retourné les pages demandées. Mettez à jour le service OCR local.");
+            var warnings = (document.Warnings ?? []).ToList();
+            var checkedPages = document.Pages.Select(page =>
+            {
+                if (page.Tables == null)
+                    return page;
+                var valid = page.Tables.Where(table => table?.Rows is { Count: > 0 and <= 100000 }
+                    && table.Rows.All(row => row != null && row.Count is > 0 and <= 64 && row.All(cell => cell != null && cell.Length <= 100000))
+                    && (table.Bounds == null || double.IsFinite(table.Bounds.Left) && double.IsFinite(table.Bounds.Right)
+                        && double.IsFinite(table.Bounds.Top) && double.IsFinite(table.Bounds.Bottom)
+                        && table.Bounds.Left >= 0 && table.Bounds.Top >= 0 && table.Bounds.Right <= page.Width && table.Bounds.Bottom <= page.Height
+                        && table.Bounds.Right > table.Bounds.Left && table.Bounds.Bottom > table.Bounds.Top)).ToArray();
+                if (valid.Length != page.Tables.Count)
+                    warnings.Add(new("LOCAL_TABLE_GRID_INVALID", $"Page {page.Number} : un tableau invalide a été écarté ; les blocs OCR restent disponibles."));
+                return page with
+                {
+                    Tables = valid.Length == 0 ? null : valid
+                };
+            }).ToArray();
             return document with
             {
-                Method = "PADDLE_OCR"
+                Method = "PADDLE_OCR",
+                Pages = checkedPages,
+                Warnings = warnings
             };
         }
         catch (HttpRequestException) { throw new AppException(503, "Le moteur OCR local est indisponible. Démarrez services/ocr/start.ps1 puis réessayez."); }

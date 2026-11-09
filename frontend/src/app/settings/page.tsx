@@ -1,35 +1,94 @@
 'use client';
-import { useState } from 'react';
-import { KeyRound, ScanLine, Save, Server, ShieldCheck } from 'lucide-react';
+import { useId, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowRight,
+  FileText,
+  Table2,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Cloud,
+  Cpu,
+  Eye,
+  EyeOff,
+  KeyRound,
+  LoaderCircle,
+  LockKeyhole,
+  RotateCcw,
+  ScanLine,
+  Save,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
 import { useApi } from '@/services/use-api';
 import { request } from '@/services/api';
 import { useAuth } from '@/components/auth-context';
 import { Button } from '@/components/ui/button';
-import { LoadState } from '@/components/ui/load-state';
 import { PageHeader } from '@/components/page-header';
+import { LoadState } from '@/components/ui/load-state';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 
 type OcrSettings = {
-  provider: 'AUTO' | 'LOCAL' | 'AI_STUDIO' | 'OPENROUTER';
+  provider: 'AUTO' | 'LOCAL' | 'AI_STUDIO';
   autoPaddleProvider?: 'LOCAL' | 'AI_STUDIO';
   cloudModel: string;
   baseUrl: string;
   hasToken: boolean;
   apiUrl: string;
-  openRouterModel?: string;
-  hasOpenRouterToken?: boolean;
 };
+type AvailableProvider = OcrSettings['provider'];
+const engines = [
+  {
+    value: 'AUTO',
+    name: 'Automatique',
+    description: 'Texte natif, OCR et reconstruction des tableaux.',
+    icon: Sparkles,
+    tag: 'Recommandé',
+  },
+  {
+    value: 'LOCAL',
+    name: 'PaddleOCR local',
+    description: 'Lecture sur votre serveur, sans clé API.',
+    icon: Cpu,
+    tag: 'Local',
+  },
+  {
+    value: 'AI_STUDIO',
+    name: 'PaddleOCR AI Studio',
+    description: 'Lecture distante avec votre jeton PaddleOCR.',
+    icon: Cloud,
+    tag: 'API distante',
+  },
+] as const;
+
 export default function OcrSettingsPage() {
   const { user } = useAuth();
   const api = useApi<OcrSettings>(user?.role === 'Admin' ? '/settings/ocr' : null);
-  if (user?.role !== 'Admin') return null;
+  if (user?.role !== 'Admin')
+    return (
+      <div className="ui-page settings-page">
+        <PageHeader
+          eyebrow="Configuration OCR"
+          title="Accès administrateur requis"
+          description="Ces paramètres sont réservés aux administrateurs de l’espace de travail."
+          icon={ShieldCheck}
+        />
+      </div>
+    );
   return (
     <div className="ui-page settings-page">
       <PageHeader
+        eyebrow="Configuration OCR"
+        title="Moteurs de lecture"
+        description="Une lecture adaptée à chaque relevé et extrait bancaire."
         icon={ScanLine}
-        eyebrow="Administration"
-        title="Configuration des moteurs de lecture"
-        description="Configurez le moteur de lecture partagé par les utilisateurs de l’application."
+        actions={
+          <span className="settings-admin-badge">
+            <ShieldCheck size={14} />
+            Réglages partagés
+          </span>
+        }
       />
       <LoadState loading={api.loading} error={api.error} />
       {api.error && (
@@ -41,18 +100,74 @@ export default function OcrSettingsPage() {
     </div>
   );
 }
+
+function SecretField({
+  label,
+  value,
+  configured,
+  required,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  configured: boolean;
+  required: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  const inputId = useId();
+  return (
+    <div className="settings-field">
+      <label htmlFor={inputId}>
+        <span className="settings-field-label">
+          <KeyRound size={14} />
+          {label}
+          <span className={`settings-token-status ${configured ? 'is-configured' : ''}`}>
+            {configured ? 'Disponible' : 'À renseigner'}
+          </span>
+        </span>
+      </label>
+      <div className="settings-secret-input">
+        <input
+          id={inputId}
+          className="ui-input"
+          aria-label={label}
+          aria-describedby={`${inputId}-help`}
+          type={visible ? 'text' : 'password'}
+          autoComplete="new-password"
+          spellCheck={false}
+          maxLength={4096}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          required={required}
+          placeholder={configured ? 'Laisser vide pour conserver la clé' : 'Saisir votre clé API'}
+        />
+        <button
+          type="button"
+          aria-label={`${visible ? 'Masquer' : 'Afficher'} : ${label}`}
+          aria-pressed={visible}
+          onClick={() => setVisible(!visible)}
+        >
+          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+      <p id={`${inputId}-help`} className="settings-field-help">
+        {configured
+          ? 'Saisissez une nouvelle valeur uniquement pour remplacer la clé enregistrée.'
+          : 'La clé est nécessaire pour utiliser ce service distant.'}
+      </p>
+    </div>
+  );
+}
+
 function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
-  const [provider, setProvider] = useState(initial.provider);
+  const [provider, setProvider] = useState<AvailableProvider>(initial.provider);
   const [model, setModel] = useState(initial.cloudModel);
   const [baseUrl, setBaseUrl] = useState(initial.baseUrl);
   const [token, setToken] = useState('');
   const [autoPaddleProvider, setAutoPaddleProvider] = useState(
     initial.autoPaddleProvider ?? 'LOCAL',
   );
-  const [openRouterModel, setOpenRouterModel] = useState(
-    initial.openRouterModel ?? 'openrouter/free',
-  );
-  const [openRouterToken, setOpenRouterToken] = useState('');
   const [saved, setSaved] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -62,20 +177,32 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
     model !== saved.cloudModel ||
     baseUrl !== saved.baseUrl ||
     token !== '' ||
-    openRouterModel !== (saved.openRouterModel ?? 'openrouter/free') ||
-    openRouterToken !== '' ||
     autoPaddleProvider !== (saved.autoPaddleProvider ?? 'LOCAL');
   useUnsavedChanges(dirty);
-  // The API never returns the token, including after saving.
+  const selectedEngine = engines.find((engine) => engine.value === provider)!;
+  const local = provider === 'LOCAL' || (provider === 'AUTO' && autoPaddleProvider === 'LOCAL');
+  const paddleCloud =
+    provider === 'AI_STUDIO' || (provider === 'AUTO' && autoPaddleProvider === 'AI_STUDIO');
+  function clearFeedback() {
+    setError('');
+    setNotice('');
+  }
+  function restore(settings: OcrSettings) {
+    setProvider(settings.provider);
+    setModel(settings.cloudModel);
+    setBaseUrl(settings.baseUrl);
+    setToken('');
+    setAutoPaddleProvider(settings.autoPaddleProvider ?? 'LOCAL');
+  }
   return (
     <form
-      className="ui-card settings-form space-y-6"
+      className="settings-form"
+      aria-busy={busy}
       onSubmit={async (event) => {
         event.preventDefault();
-        if (busy) return;
+        if (busy || !dirty) return;
         setBusy(true);
-        setError('');
-        setNotice('');
+        clearFeedback();
         try {
           const settings = await request<OcrSettings>('/settings/ocr', {
             method: 'PUT',
@@ -84,243 +211,287 @@ function OcrSettingsForm({ initial }: { initial: OcrSettings }) {
               cloudModel: model,
               baseUrl,
               cloudToken: token.trim() || null,
-              openRouterModel,
-              openRouterToken: openRouterToken.trim() || null,
               autoPaddleProvider,
             }),
           });
           setSaved(settings);
-          setProvider(settings.provider);
-          setModel(settings.cloudModel);
-          setBaseUrl(settings.baseUrl);
-          setToken('');
-          setOpenRouterModel(settings.openRouterModel ?? 'openrouter/free');
-          setOpenRouterToken('');
-          setAutoPaddleProvider(settings.autoPaddleProvider ?? 'LOCAL');
-          setNotice(
-            'Configuration enregistrée. Elle s’applique aux nouvelles conversions, sans redémarrage.',
-          );
-        } catch (error) {
-          setError((error as Error).message);
+          restore(settings);
+          setNotice('Configuration enregistrée. Elle s’applique aux nouvelles conversions.');
+        } catch (e) {
+          setError((e as Error).message);
         } finally {
           setBusy(false);
         }
       }}
     >
-      <div className="flex items-start gap-3">
-        <ShieldCheck className="accent-text shrink-0" size={22} />
-        <div>
-          <h2 className="text-lg font-semibold">Accès administrateur</h2>
-          <p className="muted text-sm mt-1">
-            Le jeton est enregistré chiffré côté serveur. Il n’est jamais renvoyé au navigateur ni
-            affiché aux collaborateurs.
-          </p>
-        </div>
-      </div>
-      <fieldset disabled={busy} className="space-y-5">
-        <label className="block">
-          Moteur de lecture
-          <select
-            aria-label="Moteur de lecture"
-            className="ui-input mt-2"
-            value={provider}
-            onChange={(event) => setProvider(event.target.value as OcrSettings['provider'])}
-          >
-            <option value="AUTO">
-              Automatique — lecture locale, PaddleOCR et assistance gratuite
-            </option>
-            <option value="AI_STUDIO">API PaddleOCR AI Studio</option>
-            <option value="LOCAL">PaddleOCR local</option>
-            <option value="OPENROUTER">OpenRouter — transcription fidèle du relevé</option>
-          </select>
-        </label>
-        {provider === 'AUTO' && (
-          <div className="rounded-xl border p-4 space-y-3">
-            <p className="font-semibold">Lecture automatique avec contrôles</p>
-            <p className="muted text-sm">
-              Le texte du PDF est lu localement en priorité. Les pages non reconnues passent par
-              PaddleOCR, puis par OpenRouter gratuit si nécessaire. Les pages manquantes et les
-              incohérences restent signalées avant validation.
-            </p>
-            <label className="block">
-              Moteur PaddleOCR du mode automatique
-              <select
-                aria-label="Moteur PaddleOCR du mode automatique"
-                className="ui-input mt-2"
-                value={autoPaddleProvider}
-                onChange={(event) =>
-                  setAutoPaddleProvider(event.target.value as 'LOCAL' | 'AI_STUDIO')
-                }
-              >
-                <option value="LOCAL">PaddleOCR local — sans envoi à AI Studio</option>
-                <option value="AI_STUDIO">PaddleOCR AI Studio — jeton et quota requis</option>
-              </select>
-            </label>
+      <section
+        className="settings-card settings-engine-section"
+        aria-labelledby="settings-engine-title"
+      >
+        <header className="settings-section-heading">
+          <span className="settings-section-number">01</span>
+          <div>
+            <h2 id="settings-engine-title">Choisir le moteur</h2>
+            <p>Sélectionnez le mode de lecture de vos documents.</p>
           </div>
-        )}
-        {(provider === 'OPENROUTER' || provider === 'AUTO') && (
-          <>
-            <div className="rounded-xl border p-4 space-y-2">
-              <p className="flex items-center gap-2 text-sm font-semibold">
-                <Server size={16} /> OpenRouter
+        </header>
+        <fieldset className="settings-engine-grid" disabled={busy}>
+          <legend className="sr-only">Moteur de lecture</legend>
+          {engines.map((engine) => (
+            <label
+              key={engine.value}
+              className={`settings-engine-option ${provider === engine.value ? 'is-selected' : ''}`}
+            >
+              <input
+                type="radio"
+                name="ocr-provider"
+                value={engine.value}
+                checked={provider === engine.value}
+                onChange={() => {
+                  setProvider(engine.value);
+                  clearFeedback();
+                }}
+              />
+              <span className="settings-engine-icon">
+                <engine.icon size={22} aria-hidden="true" />
+              </span>
+              <strong className="settings-engine-name">{engine.name}</strong>
+              <span className="settings-engine-copy">{engine.description}</span>
+              <small className="settings-engine-tag">{engine.tag}</small>
+              <span className="settings-engine-check" aria-hidden="true">
+                {provider === engine.value && <Check size={12} />}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      </section>
+      <div className="settings-layout">
+        <div className="settings-main">
+          <section className="settings-card" aria-labelledby="settings-connection-title">
+            <header className="settings-section-heading">
+              <span className="settings-section-number">02</span>
+              <div>
+                <h2 id="settings-connection-title">Paramètres de connexion</h2>
+                <p>{local ? 'PaddleOCR sur votre serveur' : 'PaddleOCR AI Studio'}</p>
+              </div>
+            </header>
+            <fieldset className="settings-fields" disabled={busy}>
+              <legend className="sr-only">Connexion au moteur sélectionné</legend>
+              {provider === 'AUTO' && (
+                <>
+                  <p className="settings-inline-note">
+                    <Sparkles size={16} />
+                    <span>
+                      Le texte du PDF est lu en priorité. PaddleOCR prend le relais pour les pages
+                      scannées.
+                    </span>
+                  </p>
+                  <label className="settings-field">
+                    Service PaddleOCR
+                    <select
+                      aria-label="Moteur PaddleOCR du mode automatique"
+                      className="ui-input"
+                      value={autoPaddleProvider}
+                      onChange={(event) => {
+                        setAutoPaddleProvider(event.target.value as 'LOCAL' | 'AI_STUDIO');
+                        clearFeedback();
+                      }}
+                    >
+                      <option value="LOCAL">Local — sans clé API</option>
+                      <option value="AI_STUDIO">AI Studio — jeton et quota requis</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              {local && (
+                <label className="settings-field">
+                  Adresse du moteur OCR local
+                  <input
+                    aria-label="Adresse du moteur OCR local"
+                    className="ui-input settings-url-input"
+                    type="url"
+                    required
+                    maxLength={2000}
+                    value={baseUrl}
+                    onChange={(event) => {
+                      setBaseUrl(event.target.value);
+                      clearFeedback();
+                    }}
+                    placeholder="http://127.0.0.1:8091"
+                    spellCheck={false}
+                  />
+                  <span className="settings-field-help">
+                    Le service PaddleOCR doit être démarré et accessible depuis le serveur de
+                    l’application.
+                  </span>
+                </label>
+              )}
+              {paddleCloud && (
+                <>
+                  <p className="settings-inline-note">
+                    <Cloud size={16} />
+                    <span>
+                      Lecture via AI Studio : un jeton valide et du quota sont nécessaires.
+                    </span>
+                  </p>
+                  <div className="settings-connection-grid">
+                    <label className="settings-field">
+                      Modèle PaddleOCR
+                      <select
+                        aria-label="Modèle PaddleOCR"
+                        className="ui-input"
+                        value={model}
+                        onChange={(event) => {
+                          setModel(event.target.value);
+                          clearFeedback();
+                        }}
+                      >
+                        <option value="PP-OCRv6">PP-OCRv6 — texte et positions</option>
+                        <option value="PaddleOCR-VL-1.6">
+                          PaddleOCR-VL-1.6 — tableaux et mise en page
+                        </option>
+                      </select>
+                    </label>
+                    <SecretField
+                      label="Jeton API PaddleOCR"
+                      value={token}
+                      configured={saved.hasToken}
+                      required={!saved.hasToken}
+                      onChange={(value) => {
+                        setToken(value);
+                        clearFeedback();
+                      }}
+                    />
+                  </div>
+                  <details className="settings-service-details">
+                    <summary>
+                      Adresse du service et accès au jeton
+                      <ChevronDown size={14} />
+                    </summary>
+                    <p>{saved.apiUrl}</p>
+                    <a href="https://aistudio.baidu.com/paddleocr" target="_blank" rel="noreferrer">
+                      Ouvrir PaddleOCR AI Studio ↗
+                    </a>
+                  </details>
+                </>
+              )}
+            </fieldset>
+            <div className="settings-save-area">
+              {error && (
+                <p role="alert" className="settings-feedback is-error">
+                  <AlertCircle size={17} />
+                  {error}
+                </p>
+              )}
+              {notice && (
+                <p role="status" className="settings-feedback is-success">
+                  <CheckCircle2 size={17} />
+                  {notice}
+                </p>
+              )}
+              <footer className="settings-actions">
+                <div className="settings-action-status">
+                  {dirty ? <span className="settings-unsaved-dot" /> : <CheckCircle2 size={16} />}
+                  <p>
+                    {dirty ? 'Modifications à enregistrer' : 'Paramètres à jour'}
+                    <small>Les conversions en cours conservent leurs réglages.</small>
+                  </p>
+                </div>
+                <div className="settings-action-buttons">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy || !dirty}
+                    onClick={() => {
+                      restore(saved);
+                      clearFeedback();
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                    Rétablir
+                  </Button>
+                  <Button type="submit" disabled={busy || !dirty}>
+                    {busy ? (
+                      <LoaderCircle size={15} className="animate-spin" />
+                    ) : (
+                      <Save size={15} />
+                    )}
+                    {busy ? 'Enregistrement…' : 'Enregistrer'}
+                  </Button>
+                </div>
+              </footer>
+            </div>
+          </section>
+        </div>
+        <aside className="settings-sidebar" aria-label="Informations sur la configuration">
+          <section className="settings-card settings-summary">
+            <div className="settings-summary-visual" key={provider}>
+              <span className="settings-preview-label">VOTRE CONFIGURATION</span>
+              <span className="settings-preview-icon">
+                <selectedEngine.icon size={26} />
+              </span>
+              <h2>{selectedEngine.name}</h2>
+              <p>{local ? 'Lecture sur votre serveur' : 'Lecture avec AI Studio'}</p>
+              <div className="settings-reading-flow" aria-label="Du PDF aux données structurées">
+                <FileText size={17} />
+                <ArrowRight size={13} />
+                <ScanLine size={17} />
+                <ArrowRight size={13} />
+                <Table2 size={17} />
+              </div>
+            </div>
+            <div className="settings-summary-body">
+              <dl>
+                <div>
+                  <dt>Service OCR</dt>
+                  <dd>{local ? 'PaddleOCR local' : 'PaddleOCR AI Studio'}</dd>
+                </div>
+                <div>
+                  <dt>Accès au service</dt>
+                  <dd>
+                    {local
+                      ? 'Sans clé API'
+                      : token.trim()
+                        ? 'Nouveau jeton saisi'
+                        : saved.hasToken
+                          ? 'Jeton enregistré'
+                          : 'Jeton à renseigner'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Application des réglages</dt>
+                  <dd>Prochaines conversions</dd>
+                </div>
+              </dl>
+              <p role="status" className={`settings-save-state ${dirty ? 'is-dirty' : ''}`}>
+                <span aria-hidden="true" />
+                {dirty ? 'Modifications non enregistrées' : 'Configuration enregistrée'}
               </p>
-              <p className="muted text-sm">
-                {provider === 'AUTO'
-                  ? 'Seules les pages non résolues sont transmises à OpenRouter et au fournisseur du modèle choisi.'
-                  : 'Chaque page du PDF est transmise à OpenRouter et au fournisseur du modèle choisi.'}
-                Seuls les modèles gratuits et le parseur PDF gratuit sont autorisés. La lecture
-                conserve les colonnes et les lignes du document dans un texte à vérifier avec
-                l’original.
-              </p>
-              <p className="muted text-sm">
-                Étape 1 : transcription du relevé. Étape 2 : correction des données puis export Sage
-                ou CSV selon le modèle choisi. Le modèle d’export ne modifie pas le texte source.
+              {dirty && (
+                <p className="settings-summary-help">
+                  Enregistrez pour appliquer cette configuration.
+                </p>
+              )}
+            </div>
+          </section>
+          <section className="settings-security">
+            <LockKeyhole size={19} />
+            <div>
+              <h2>Clés protégées</h2>
+              <p>
+                Les clés sont chiffrées côté serveur. Les valeurs enregistrées ne sont jamais
+                renvoyées au navigateur.
               </p>
             </div>
-            <label className="block">
-              Modèle OpenRouter
-              <input
-                aria-label="Modèle OpenRouter"
-                className="ui-input mt-2"
-                required
-                maxLength={200}
-                pattern="openrouter/free|.+:free"
-                value={openRouterModel}
-                spellCheck={false}
-                onChange={(event) => setOpenRouterModel(event.target.value)}
-              />
-              <span className="muted text-xs mt-2 block">
-                Exemple : openrouter/free ou un modèle se terminant par :free. Les modèles payants
-                sont refusés. Les quotas et la disponibilité des modèles gratuits s’appliquent.
-              </span>
-            </label>
-            <label className="block">
-              <span className="flex items-center gap-2">
-                <KeyRound size={16} /> Clé API OpenRouter
-              </span>
-              <input
-                aria-label="Clé API OpenRouter"
-                className="ui-input mt-2"
-                type="password"
-                autoComplete="new-password"
-                spellCheck={false}
-                maxLength={4096}
-                value={openRouterToken}
-                onChange={(event) => setOpenRouterToken(event.target.value)}
-                required={provider === 'OPENROUTER' && !saved.hasOpenRouterToken}
-                placeholder={
-                  saved.hasOpenRouterToken
-                    ? 'Laisser vide pour conserver la clé enregistrée'
-                    : 'Saisir votre clé OpenRouter'
-                }
-              />
-              <span className="muted text-xs mt-2 block">
-                {saved.hasOpenRouterToken
-                  ? 'Une clé OpenRouter est déjà configurée.'
-                  : 'Aucune clé OpenRouter configurée.'}
-              </span>
-            </label>
-          </>
-        )}
-        {(provider === 'AI_STUDIO' ||
-          (provider === 'AUTO' && autoPaddleProvider === 'AI_STUDIO')) && (
-          <>
-            <div className="rounded-xl border p-4 space-y-2">
-              <p className="flex items-center gap-2 text-sm font-semibold">
-                <Server size={16} />
-                API officielle PaddleOCR
-              </p>
-              <p className="muted text-xs break-all">{initial.apiUrl}</p>
-              <p className="muted text-sm">
-                Le serveur doit accéder à Internet. Les PDF nécessitant l’OCR seront transmis à ce
-                service ; un jeton valide et du quota sont nécessaires.
-              </p>
-              <a
-                className="accent-text text-sm underline"
-                href="https://aistudio.baidu.com/paddleocr"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ouvrir PaddleOCR AI Studio pour obtenir un jeton
-              </a>
-            </div>
-            <label className="block">
-              Modèle PaddleOCR
-              <select
-                aria-label="Modèle PaddleOCR"
-                className="ui-input mt-2"
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-              >
-                <option value="PP-OCRv6">PP-OCRv6 — texte et positions</option>
-                <option value="PaddleOCR-VL-1.6">
-                  PaddleOCR-VL-1.6 — tableaux et mise en page
-                </option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="flex items-center gap-2">
-                <KeyRound size={16} />
-                Jeton API PaddleOCR
-              </span>
-              <input
-                aria-label="Jeton API PaddleOCR"
-                className="ui-input mt-2"
-                type="password"
-                autoComplete="new-password"
-                spellCheck={false}
-                maxLength={4096}
-                value={token}
-                onChange={(event) => setToken(event.target.value)}
-                required={!saved.hasToken}
-                placeholder={
-                  saved.hasToken
-                    ? 'Laisser vide pour conserver le jeton enregistré'
-                    : 'Saisir votre jeton AI Studio'
-                }
-              />
-              <span className="muted text-xs mt-2 block">
-                {saved.hasToken
-                  ? 'Un jeton est déjà configuré. Saisissez une nouvelle valeur pour le remplacer.'
-                  : 'Aucun jeton configuré.'}
-              </span>
-            </label>
-          </>
-        )}
-        {(provider === 'LOCAL' || (provider === 'AUTO' && autoPaddleProvider === 'LOCAL')) && (
-          <label className="block">
-            Adresse du moteur OCR local
-            <input
-              aria-label="Adresse du moteur OCR local"
-              className="ui-input mt-2"
-              type="url"
-              required
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-            />
-            <span className="muted text-xs mt-2 block">
-              Exemple : http://127.0.0.1:8091. Le service PaddleOCR doit être démarré et accessible
-              depuis le serveur.
+          </section>
+          <p className="settings-sidebar-note">
+            <ShieldCheck size={16} />
+            <span>
+              Les contrôles des dates, montants et soldes restent actifs quel que soit le moteur
+              choisi.
             </span>
-          </label>
-        )}
-      </fieldset>
-      {error && (
-        <p role="alert" className="text-destructive">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p role="status" className="text-sm accent-text">
-          {notice}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="muted text-xs">Les conversions en cours conservent leur configuration.</p>
-        <Button disabled={busy || !dirty}>
-          <Save size={16} />
-          {busy ? 'Enregistrement…' : 'Enregistrer la configuration'}
-        </Button>
+          </p>
+        </aside>
       </div>
     </form>
   );

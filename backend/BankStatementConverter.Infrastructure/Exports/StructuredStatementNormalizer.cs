@@ -53,6 +53,7 @@ public static class StructuredStatementNormalizer
             start ??= printed.PeriodStart;
             end ??= printed.PeriodEnd;
         }
+        var dateContext = StatementDateContext.Resolve(document, start, end, metadata);
         var warnings = new List<ExportError> { new("PDF_REVIEW_REQUIRED", "Vérifiez les tableaux, mouvements et soldes extraits avec toutes les pages du PDF original avant validation.") };
         var transactions = new List<StatementTransaction>();
         var balances = new List<(decimal? Amount, DateOnly? Date, DateOnly? ValueDate, string Label)>();
@@ -63,8 +64,9 @@ public static class StructuredStatementNormalizer
             if (page.Tables is not { Count: > 0 })
                 throw new AppException(422, "Une page ne contient aucun tableau reconnu. Vérifiez toutes les pages avant l’export ; aucun import partiel n’a été adapté.");
             var recognizedOnPage = false;
-            foreach (var table in page.Tables ?? [])
+            foreach (var sourceTable in page.Tables ?? [])
             {
+                var table = mapping == null ? BilingualStatementTables.Coalesce(sourceTable, warnings) : sourceTable;
                 PdfTableColumnMapping? columns = mapping;
                 var recognizedIndex = table.Rows.ToList().FindIndex(row => Header(row) != null);
                 var recognized = recognizedIndex < 0 ? null : Header(table.Rows[recognizedIndex]);
@@ -89,14 +91,14 @@ public static class StructuredStatementNormalizer
                 }
                 if (columns == null)
                     columns = recognized;
-                if (columns == null && previous != null && table.Rows.Any(row => row.Count > previous.Date && Date(row[previous.Date], start, end).HasValue))
+                if (columns == null && previous != null && table.Rows.Any(row => row.Count > previous.Date && Date(row[previous.Date], dateContext.Start, dateContext.End).HasValue))
                     columns = previous with
                     {
                         StartRow = 0
                     };
                 if (columns == null)
                 {
-                    if (table.Rows.Any(row => row.Any(c => Date(c, start, end).HasValue) && row.Any(c => Money(c).HasValue)))
+                    if (table.Rows.Any(row => row.Any(c => Date(c, dateContext.Start, dateContext.End).HasValue) && row.Any(c => Money(c).HasValue)))
                         throw new AppException(422, "Un tableau contenant des mouvements n’a pas été reconnu. Adaptez ses colonnes avant l’export.");
                     continue;
                 }
@@ -131,8 +133,9 @@ public static class StructuredStatementNormalizer
                     }
                     var debit = CellMoney(debitText);
                     var credit = CellMoney(creditText);
-                    var opDate = Date(Cell(columns.Date), start, end);
-                    var valueDate = Date(Cell(columns.ValueDate), start, end, opDate);
+                    var opDate = StatementValueParser.Date(Cell(columns.Date), dateContext.Start, dateContext.End,
+                        requireWithinPeriod: start.HasValue && end > start);
+                    var valueDate = Date(Cell(columns.ValueDate), dateContext.Start, dateContext.End, opDate);
                     if (StatementFieldNames.IsBalance(label))
                     {
                         if (StatementFieldNames.IsAvailableBalance(label))
@@ -167,7 +170,7 @@ public static class StructuredStatementNormalizer
                         continue;
                     }
                     var sequence = transactions.Count + 1;
-                    (opDate, valueDate) = StatementValueParser.CompleteDates(opDate, valueDate, Cell(columns.Date), Cell(columns.ValueDate), warnings);
+                    (opDate, valueDate) = StatementValueParser.CompleteDates(opDate, valueDate, Cell(columns.Date), Cell(columns.ValueDate), warnings, start, end);
                     if (!opDate.HasValue || (!string.IsNullOrWhiteSpace(Cell(columns.ValueDate)) && !valueDate.HasValue))
                         warnings.Add(new("PDF_DATE_UNREADABLE", "Date non reconnue dans une cellule du tableau. Corrigez-la avec l’original.", sequence, SourceField: "Date"));
                     if ((!string.IsNullOrWhiteSpace(debitText) && !debit.HasValue) || (!string.IsNullOrWhiteSpace(creditText) && !credit.HasValue) || !debit.HasValue && !credit.HasValue)

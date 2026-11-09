@@ -7,6 +7,8 @@ services:
       WEB_CONCURRENCY: ${OCR_WORKERS:-2}
       OCR_CPU_THREADS: ${OCR_CPU_THREADS:-2}
       OCR_MODEL_SIZE: ${OCR_MODEL_SIZE:-small}
+      OCR_PIPELINE: ${OCR_PIPELINE:-structure}
+      OCR_LAYOUT_MODEL: ${OCR_LAYOUT_MODEL:-PP-DocLayout-M}
       OCR_DETECTION_MAX_SIDE: ${OCR_DETECTION_MAX_SIDE:-1280}
     volumes:
       - ocr-models:/root/.paddlex
@@ -25,15 +27,9 @@ services:
       Storage__Root: /app/uploads
       Ocr__BaseUrl: http://ocr:8091
       Ocr__Provider: ${Ocr__Provider:-AUTO}
-      OpenRouter__Model: ${OpenRouter__Model:-openrouter/free}
-      OpenRouter__ApiKey: ${OpenRouter__ApiKey:-}
-      OpenRouter__ConcurrentPages: ${OpenRouter__ConcurrentPages:-2}
-      OpenRouter__PageTimeoutSeconds: ${OpenRouter__PageTimeoutSeconds:-0}
-      OpenRouter__DocumentTimeoutSeconds: ${OpenRouter__DocumentTimeoutSeconds:-0}
       Hybrid__AutoPaddleProvider: ${Hybrid__AutoPaddleProvider:-LOCAL}
       Hybrid__TimeoutSeconds: ${Hybrid__TimeoutSeconds:-0}
       Hybrid__PaddleTimeoutSeconds: ${Hybrid__PaddleTimeoutSeconds:-0}
-      Hybrid__MaxAiPages: ${Hybrid__MaxAiPages:-0}
       Ocr__CloudToken: ${Ocr__CloudToken:-}
       Ocr__CloudModel: ${Ocr__CloudModel:-PP-OCRv6}
       Ocr__TimeoutSeconds: ${Ocr__TimeoutSeconds:-0}

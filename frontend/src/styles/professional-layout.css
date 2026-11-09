@@ -1,4 +1,71 @@
 /* Shared layout rules, applied after the page styles to keep spacing and controls consistent. */
+/* Controls use solid semantic colors so page-level image resets cannot hide actions. */
+.ui-button {
+  max-width: 100%;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  touch-action: manipulation;
+}
+.ui-button:not(:disabled):hover,
+.ui-button:not(:disabled):active {
+  transform: none;
+}
+.ui-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.ui-button[data-variant='destructive'] {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  border: 1px solid transparent;
+}
+.ui-button[data-variant='destructive']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--destructive) 88%, var(--foreground));
+}
+.ui-button[data-variant='ghost']:not(.text-destructive) {
+  color: var(--foreground);
+}
+.ui-button[data-variant='ghost']:hover:not(:disabled):not(.text-destructive) {
+  color: var(--link);
+}
+.ui-button:focus-visible,
+.icon-button:focus-visible,
+.button-primary:focus-visible,
+.button-secondary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+.ui-input,
+[data-slot='input'] {
+  color: var(--foreground);
+  background-color: var(--surface);
+}
+select option,
+select optgroup {
+  color: var(--foreground);
+  background-color: var(--surface);
+}
+.ui-input[aria-invalid='true'],
+[data-slot='input'][aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+.page-header-copy,
+.page-header-copy > div {
+  min-width: 0;
+}
+.page-header-actions {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+@media (pointer: coarse) {
+  .ui-button[data-size^='icon'],
+  .icon-button,
+  .alias-menu-trigger.mini-menu-trigger {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 .app-shell .main-content {
   width: 100%;
   padding: 24px;
@@ -154,38 +221,6 @@
 .client-workspace-page .workspace-profile p {
   overflow-wrap: anywhere;
 }
-.history-event-heading {
-  justify-content: flex-start;
-}
-.history-event-heading > .history-row-actions {
-  display: contents;
-}
-.history-event-heading .history-action {
-  order: 1;
-}
-.history-event-heading time {
-  order: 2;
-  margin-left: auto;
-}
-.history-event-heading .history-row-actions > button {
-  order: 3;
-}
-.history-profile-content .history-row-actions {
-  justify-content: space-between;
-}
-.history-selection-bar {
-  font-size: 12px;
-}
-.settings-form {
-  width: min(100%, 920px);
-}
-.settings-form > fieldset {
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-  font-weight: 500;
-}
-.settings-form > div:last-child,
 .dialog-form-actions {
   display: flex;
   align-items: center;
@@ -195,9 +230,6 @@
   border-top: 1px solid var(--border);
   padding-top: 18px;
   margin-top: 22px;
-}
-.settings-form > div:last-child > p {
-  margin-right: auto;
 }
 .overview-inline-models a {
   max-width: 100%;
@@ -218,14 +250,6 @@
   }
 }
 @media (max-width: 650px) {
-  .history-event-heading .history-row-actions > button {
-    margin-left: auto;
-  }
-  .history-event-heading time {
-    order: 4;
-    flex-basis: 100%;
-    margin-left: 0;
-  }
   .app-shell .main-content {
     padding: 14px;
   }
@@ -271,13 +295,11 @@
     min-width: 0;
     width: 100%;
   }
-  .app-shell .team-summary,
-  .app-shell .history-overview {
+  .app-shell .team-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   }
-  .app-shell .team-stat,
-  .app-shell .history-stat {
+  .app-shell .team-stat {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -285,30 +307,21 @@
     padding: 12px;
     gap: 8px;
   }
-  .history-stat:last-child {
-    grid-column: auto;
-  }
-  .team-stat > svg,
-  .history-stat > svg {
+  .team-stat > svg {
     width: 16px;
     height: 16px;
     padding: 6px;
     border-radius: 8px;
   }
-  .team-stat small,
-  .history-stat span {
+  .team-stat small {
     display: block;
     font-size: 10px;
     line-height: 1.5;
     overflow-wrap: anywhere;
   }
-  .team-stat strong,
-  .history-stat strong {
+  .team-stat strong {
     font-size: 20px;
     overflow-wrap: anywhere;
-  }
-  .history-stat:last-child strong {
-    font-size: 13px;
   }
   .overview-metric-top {
     display: grid;
@@ -348,9 +361,6 @@
     flex: 1 1 auto;
   }
   .statement-archive-heading > .ui-button {
-    width: 100%;
-  }
-  .settings-form > div:last-child > .ui-button {
     width: 100%;
   }
 }

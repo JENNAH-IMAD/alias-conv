@@ -13,7 +13,7 @@ export function StatementSourceText({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return (
-    <section className="space-y-3 p-3" aria-label="Texte source du relevé">
+    <section className="statement-source-text space-y-3 p-3" aria-label="Texte source du document">
       <p className="muted text-sm">
         Lecture initiale conservée, avant les corrections et l’export. Vérifiez les lignes et les
         colonnes avec le PDF original ; une transcription automatique peut contenir des erreurs.

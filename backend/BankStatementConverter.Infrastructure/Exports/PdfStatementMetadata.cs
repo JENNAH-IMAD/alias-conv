@@ -19,7 +19,7 @@ public static class PdfStatementMetadata
     private static IReadOnlyList<decimal> Amounts(string text) => Regex.Matches(text,
         @"(?<![\w/])[-+]?\d+(?:(?:[ \u00a0\u202f]+|[.,])\d{3})*[,.]\d{2}(?!\d)", RegexOptions.None, Timeout)
         .Select(m => Money(m.Value)).Where(n => n.HasValue).Select(n => n!.Value).ToArray();
-    private static IEnumerable<string> Lines(PdfTextPage page)
+    internal static IEnumerable<string> Lines(PdfTextPage page)
     {
         var groups = new List<List<PdfTextBox>>();
         foreach (var b in page.Boxes.OrderBy(b => (b.Top + b.Bottom) / 2).ThenBy(b => b.Left))
@@ -51,6 +51,9 @@ public static class PdfStatementMetadata
         var period = Match(Fold(text), $@"(?:PERIODE\s*(?::|DU)?\s*|\bDU\s+)({FullDate})\s*(?:AU|-)\s*({FullDate})");
         var start = manual?.PeriodStart ?? s.PeriodStart ?? (period.Success ? Date(period.Groups[1].Value) : null);
         var end = manual?.PeriodEnd ?? s.PeriodEnd ?? (period.Success ? Date(period.Groups[2].Value) : null);
+        var dateContext = StatementDateContext.Resolve(document, start, end, manual ?? s);
+        start ??= dateContext.PeriodStart;
+        end ??= dateContext.PeriodEnd;
         var monthCaption = Match(Fold(text), @"RELEVE\s+DE\s+COMPTE\s+DU\s+MOIS\s+DE\s*:?\s*(\d{2})/(\d{4})\b");
         if (monthCaption.Success && DateOnly.TryParseExact("01/" + monthCaption.Groups[1].Value + "/" + monthCaption.Groups[2].Value, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var printedMonth))
         {
@@ -88,6 +91,21 @@ public static class PdfStatementMetadata
             accountNumber = null;
         if (accountNumber == null)
         {
+            // Printed RIB grids (e.g. CIH) put the account under a separate caption box.
+            foreach (var page in pages.Take(1))
+            {
+                var captions = page.Boxes.Where(b => b.Top < page.Height * .35
+                    && Match(Fold(b.Text), @"^N[°ºO""'’]?\s*DE\s+COMPTE$").Success);
+                foreach (var caption in captions)
+                {
+                    var center = (caption.Left + caption.Right) / 2;
+                    var values = page.Boxes.Where(b => b.Top > caption.Bottom && b.Top - caption.Bottom < 20
+                        && Math.Abs((b.Left + b.Right) / 2 - center) < Math.Max(20, (caption.Right - caption.Left) * .6)
+                        && Match(b.Text.Trim(), @"^\d[\d ]{5,33}\d$").Success).Select(b => b.Text.Trim()).Distinct().ToArray();
+                    if (values.Length == 1)
+                        accountNumber = values[0];
+                }
+            }
             foreach (var table in document.Pages.Take(1).SelectMany(p => p.Tables ?? []))
                 for (var i = 0; i + 1 < table.Rows.Count; i++)
                 {

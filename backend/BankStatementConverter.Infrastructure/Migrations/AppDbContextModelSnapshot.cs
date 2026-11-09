@@ -13,7 +13,6 @@ namespace BankStatementConverter.Infrastructure.Migrations
     [DbContext(typeof(AppDbContext))]
     partial class AppDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
@@ -22,6 +21,107 @@ namespace BankStatementConverter.Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("BankStatementConverter.Domain.AccountingEntryArchive", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BankName")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClientName")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ContentSha256")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Delimiter")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("DossierVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Encoding")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("GeneratedByName")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ModelName")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("PreviewFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SourceFileName")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("SourceVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StatementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "CreatedAt");
+
+                    b.HasIndex("StatementId", "CreatedAt");
+
+                    b.HasIndex("ClientId", "StatementId", "PreviewFingerprint")
+                        .IsUnique();
+
+                    b.ToTable("AccountingEntryArchives");
+                });
 
             modelBuilder.Entity("BankStatementConverter.Domain.Bank", b =>
                 {
@@ -191,6 +291,37 @@ namespace BankStatementConverter.Infrastructure.Migrations
                     b.ToTable("Clients");
                 });
 
+            modelBuilder.Entity("BankStatementConverter.Domain.ClientEntryModelSet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ModelsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId")
+                        .IsUnique();
+
+                    b.ToTable("ClientEntryModelSets");
+                });
+
             modelBuilder.Entity("BankStatementConverter.Domain.Document", b =>
                 {
                     b.Property<Guid>("Id")
@@ -226,6 +357,57 @@ namespace BankStatementConverter.Infrastructure.Migrations
                     b.HasIndex("ClientId", "CreatedAt");
 
                     b.ToTable("Documents");
+                });
+
+            modelBuilder.Entity("BankStatementConverter.Domain.EntryOutputTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("OutputJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EntryOutputTemplates");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("9d2e4a78-fb36-4820-9c04-87b370743915"),
+                            Active = true,
+                            CreatedAt = new DateTime(2026, 11, 3, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "N° compte, Intitulé, Libellé, Banque, Date, Débit HT et Crédit HT après calcul de la TVA.",
+                            Name = "Écriture comptable S100",
+                            OutputJson = "{\"fileExtension\":\"txt\",\"delimiter\":\";\",\"encoding\":\"utf-8\",\"numberCulture\":\"fr-FR\",\"includeHeader\":true,\"columns\":[{\"field\":\"ACCOUNT\",\"label\":\"N\\u00B0 compte\",\"display\":true,\"export\":true},{\"field\":\"TITLE\",\"label\":\"Intitul\\u00E9\",\"display\":true,\"export\":true},{\"field\":\"DESCRIPTION\",\"label\":\"Libell\\u00E9\",\"display\":true,\"export\":true},{\"field\":\"BANK\",\"label\":\"Banque\",\"display\":true,\"export\":true},{\"field\":\"DATE\",\"label\":\"Date\",\"display\":true,\"export\":true},{\"field\":\"DEBIT_HT\",\"label\":\"D\\u00E9bit HT\",\"display\":true,\"export\":true},{\"field\":\"CREDIT_HT\",\"label\":\"Cr\\u00E9dit HT\",\"display\":true,\"export\":true}]}",
+                            UpdatedAt = new DateTime(2026, 11, 3, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Version = 1
+                        });
                 });
 
             modelBuilder.Entity("BankStatementConverter.Domain.ExportJob", b =>
@@ -702,6 +884,39 @@ namespace BankStatementConverter.Infrastructure.Migrations
                     b.ToTable("StatementImports");
                 });
 
+            modelBuilder.Entity("BankStatementConverter.Domain.StatementTreatment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("StatementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StatementId", "ScopeId")
+                        .IsUnique();
+
+                    b.ToTable("StatementTreatments");
+                });
+
             modelBuilder.Entity("BankStatementConverter.Domain.WorkspaceSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -808,6 +1023,15 @@ namespace BankStatementConverter.Infrastructure.Migrations
                     b.Navigation("Client");
                 });
 
+            modelBuilder.Entity("BankStatementConverter.Domain.ClientEntryModelSet", b =>
+                {
+                    b.HasOne("BankStatementConverter.Domain.Client", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("BankStatementConverter.Domain.Document", b =>
                 {
                     b.HasOne("BankStatementConverter.Domain.BankAccount", "BankAccount")
@@ -847,6 +1071,15 @@ namespace BankStatementConverter.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ClientId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("BankStatementConverter.Domain.StatementTreatment", b =>
+                {
+                    b.HasOne("BankStatementConverter.Domain.StatementImport", null)
+                        .WithMany()
+                        .HasForeignKey("StatementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("BankStatementConverter.Domain.WorkspaceSession", b =>

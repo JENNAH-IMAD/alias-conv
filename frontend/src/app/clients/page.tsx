@@ -12,6 +12,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { Client, Page } from '@/services/api';
 import { useApi } from '@/services/use-api';
 import { PageHeader } from '@/components/page-header';
+import { BankingSectionNavigation } from '@/components/banking-section-navigation';
 export default function ClientsPage() {
   const { can } = useAuth();
   const [page, setPage] = useState(1);
@@ -24,6 +25,7 @@ export default function ClientsPage() {
   const [deleting, setDeleting] = useState<Client | null>(null);
   return (
     <div className="ui-page clients-page">
+      <BankingSectionNavigation active="clients" />
       {deleting && (
         <CatalogDelete
           resource="clients"

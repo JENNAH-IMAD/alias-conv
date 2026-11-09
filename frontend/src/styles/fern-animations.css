@@ -1,0 +1,354 @@
+/* Shared motion vocabulary used across the Alias workspace. */
+:root {
+  --fern-motion-fast: 160ms;
+  --fern-motion: 320ms;
+  --fern-ease: cubic-bezier(.22,.61,.36,1);
+}
+
+@keyframes fern-title-letter { from { opacity: 0; transform: translateY(.32em); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fern-enter { from { opacity: 0; transform: translateY(12px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes fern-content-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fern-subnav-in { from { opacity: 0; transform: translateX(-7px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes fern-shell-sidebar { from { opacity: .7; } to { opacity: 1; } }
+@keyframes fern-shell-topbar { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fern-content-detail { from { opacity: 0; transform: translateY(8px) scale(.995); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes fern-grow { from { transform: scaleY(.04); opacity: .35; } to { transform: scaleY(1); opacity: 1; } }
+@keyframes fern-draw { to { stroke-dashoffset: 0; } }
+@keyframes fern-digit { from { opacity: .25; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fern-bell-ring { 0%,100% { transform: rotate(0); } 20% { transform: rotate(12deg); } 40% { transform: rotate(-10deg); } 60% { transform: rotate(7deg); } 80% { transform: rotate(-4deg); } }
+@keyframes fern-pop-in { from { opacity: 0; transform: translateY(5px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes fern-pop-out { to { opacity: 0; transform: translateY(3px) scale(.98); } }
+@keyframes fern-notification-row-in { from { opacity: 0; transform: translateX(9px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes fern-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes fern-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.fern-title-letters > span {
+  display: inline-block;
+  white-space: pre;
+  animation: fern-title-letter 240ms var(--fern-ease);
+  animation-delay: calc(var(--fern-letter-index, 0) * 8ms);
+}
+.fern-dialog-in[open] { animation: fern-dialog-in 220ms var(--fern-ease) both; }
+.alias-theme-menu[data-state='open'] { animation: fern-pop-in 160ms var(--fern-ease) both; transform-origin: top right; }
+.alias-theme-menu[data-state='closed'] { animation: fern-pop-out 120ms ease-in both; transform-origin: top right; }
+.overview-chart-import-line,
+.overview-chart-export-line { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: fern-draw 950ms var(--fern-ease) 100ms both; }
+.overview-chart-export-line { animation-delay: 220ms; }
+.overview-metric-value { animation: fern-digit 420ms var(--fern-ease) both; }
+.workspace-route-content > :is(.ui-page, .conversion-page) > :where(
+  :not(.alias-page-header):not(dialog):not([role='dialog']):not([role='tabpanel']):not([hidden]):not([aria-hidden='true'])
+) {
+  animation: fern-enter 240ms var(--fern-ease) var(--fern-page-stagger-delay, 0ms) both;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page) > :nth-child(2) {
+  --fern-page-stagger-delay: 35ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page) > :nth-child(3) {
+  --fern-page-stagger-delay: 70ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page) > :nth-child(4) {
+  --fern-page-stagger-delay: 105ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page) > :nth-child(5) {
+  --fern-page-stagger-delay: 140ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page) > :nth-child(n + 6) {
+  --fern-page-stagger-delay: 175ms;
+}
+.accounts-page > .accounts-content {
+  animation: none;
+}
+.accounts-page > .accounts-content > :not([data-account-wallet]) {
+  animation: fern-enter 220ms var(--fern-ease) both;
+}
+/* The parent block already enters in the page cascade; keep nested entrance effects from replaying it. */
+/* Reveal the dashboard copy and controls after their containing panel starts to enter. */
+.workspace-route-content [data-page-header] [data-page-eyebrow] {
+  animation: fern-content-in 180ms var(--fern-ease) var(--fern-page-stagger-delay, 0ms) both;
+}
+.workspace-route-content [data-page-header] [data-page-description] {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 55ms) both;
+}
+.dashboard-overview .dashboard-heading-resources .overview-inline-prompt-grid > section:nth-child(1) h2,
+.dashboard-overview .dashboard-heading-resources .overview-inline-prompt-grid > section:nth-child(2) h2 {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 70ms) both;
+}
+.dashboard-overview .dashboard-heading-resources .overview-inline-prompt-grid > section:nth-child(2) h2 {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 95ms);
+}
+.dashboard-overview .dashboard-heading-resources .overview-inline-prompt-description {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 115ms) both;
+}
+.dashboard-overview .dashboard-heading-resources .overview-inline-prompt-grid > section:nth-child(2) .overview-inline-prompt-description {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 140ms);
+}
+.dashboard-overview .dashboard-heading-resources .dashboard-prompt-actions > *,
+.dashboard-overview .dashboard-heading-resources .overview-inline-models > a {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 160ms) both;
+}
+.dashboard-overview .dashboard-heading-resources .dashboard-prompt-actions > :nth-child(2),
+.dashboard-overview .dashboard-heading-resources .overview-inline-models > a {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 185ms);
+}
+.dashboard-overview .dashboard-heading-resources .dashboard-prompt-actions > :nth-child(3) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 210ms);
+}
+.dashboard-overview .dashboard-heading-resources .dashboard-prompt-actions > :nth-child(4) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 235ms);
+}
+.dashboard-overview .dashboard-heading-resources .overview-inline-models > a {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 260ms);
+}
+.dashboard-overview .dashboard-summary-heading > h2 {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 20ms) both;
+}
+.dashboard-overview .overview-freshness {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 45ms) both;
+}
+.dashboard-overview .overview-metrics > .overview-metric:nth-child(2) { --fern-card-delay: 45ms; }
+.dashboard-overview .overview-metrics > .overview-metric:nth-child(3) { --fern-card-delay: 90ms; }
+.dashboard-overview .overview-metrics > .overview-metric:nth-child(4) { --fern-card-delay: 135ms; }
+.workspace-route-content > .ui-page.dashboard-overview > .overview-indicators .overview-metric {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 45ms);
+}
+.workspace-route-content > .ui-page.dashboard-overview > .overview-indicators .overview-metric:nth-child(2) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 90ms);
+}
+.workspace-route-content > .ui-page.dashboard-overview > .overview-indicators .overview-metric:nth-child(3) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 135ms);
+}
+.workspace-route-content > .ui-page.dashboard-overview > .overview-indicators .overview-metric:nth-child(4) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 180ms);
+}
+.dashboard-overview .overview-metric-top > span,
+.dashboard-overview .overview-metric-top > svg {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + var(--fern-card-delay, 0ms) + 55ms) both;
+}
+.dashboard-overview .overview-metric h2 {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + var(--fern-card-delay, 0ms) + 80ms) both;
+}
+.dashboard-overview .overview-metric-value {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + var(--fern-card-delay, 0ms) + 105ms) both;
+}
+.dashboard-overview .overview-metric-note {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + var(--fern-card-delay, 0ms) + 130ms) both;
+}
+.dashboard-overview .dashboard-analysis .overview-card-heading h2 {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 45ms) both;
+}
+.dashboard-overview .dashboard-analysis .overview-card-heading p {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 70ms) both;
+}
+.dashboard-overview .dashboard-analysis .overview-period > button {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 85ms) both;
+}
+.dashboard-overview .dashboard-analysis .overview-period > button:nth-child(2) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 105ms);
+}
+.dashboard-overview .dashboard-analysis .overview-period > button:nth-child(3) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 125ms);
+}
+.dashboard-overview .overview-chart-totals > div > span,
+.dashboard-overview .overview-chart-totals > div > strong,
+.dashboard-overview .overview-chart-totals > .overview-period-note,
+.dashboard-overview .overview-chart-readout > * {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 115ms) both;
+}
+.dashboard-overview .overview-chart-totals > div > strong,
+.dashboard-overview .overview-chart-totals > div:nth-child(2) > span,
+.dashboard-overview .overview-chart-readout > :nth-child(2) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 140ms);
+}
+.dashboard-overview .overview-chart-totals > .overview-period-note,
+.dashboard-overview .overview-chart-readout > :nth-child(3) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 165ms);
+}
+.dashboard-overview .overview-chart-legend > span {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 180ms) both;
+}
+.dashboard-overview .overview-chart-legend > span:nth-child(2) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 205ms);
+}
+.dashboard-overview .overview-activity-svg .overview-chart-label {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 210ms) both;
+}
+.dashboard-overview .overview-progress-center > strong,
+.dashboard-overview .overview-progress-copy > * {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 125ms) both;
+}
+.dashboard-overview .overview-progress-copy > :nth-child(2) { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 150ms); }
+.dashboard-overview .overview-progress-copy > :nth-child(3) { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 175ms); }
+.dashboard-overview .overview-progress-copy > .overview-progress-breakdown { animation: none; }
+.dashboard-overview .overview-progress-breakdown > span {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 200ms) both;
+}
+.dashboard-overview .overview-progress-breakdown > span:nth-child(2) {
+  animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 225ms);
+}
+.dashboard-overview .dashboard-priorities .dashboard-priority-label,
+.dashboard-overview .dashboard-priorities .dashboard-priority-count,
+.dashboard-overview .dashboard-priorities > p,
+.dashboard-overview .dashboard-priorities .dashboard-unassigned,
+.dashboard-overview .dashboard-priorities > a {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 55ms) both;
+}
+.dashboard-overview .dashboard-priorities .dashboard-priority-count { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 80ms); }
+.dashboard-overview .dashboard-priorities > p { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 105ms); }
+.dashboard-overview .dashboard-priorities .dashboard-unassigned { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 130ms); }
+.dashboard-overview .dashboard-priorities > a { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 155ms); }
+.dashboard-overview .overview-recent .overview-card-heading > div > *,
+.dashboard-overview .overview-recent .overview-card-heading > a,
+.dashboard-overview .dashboard-quick-links > h2,
+.dashboard-overview .dashboard-quick-links > a {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 55ms) both;
+}
+.dashboard-overview .overview-recent .overview-card-heading > div > :nth-child(2),
+.dashboard-overview .dashboard-quick-links > a:nth-of-type(2) { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 80ms); }
+.dashboard-overview .overview-recent .overview-card-heading > div > :nth-child(3),
+.dashboard-overview .dashboard-quick-links > a:nth-of-type(3) { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 105ms); }
+.dashboard-overview .dashboard-quick-links > a:nth-of-type(4) { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 130ms); }
+.dashboard-overview .dashboard-quick-links > a:nth-of-type(5) { animation-delay: calc(var(--fern-page-stagger-delay, 0ms) + 155ms); }
+.fern-enter { animation: fern-enter var(--fern-motion) var(--fern-ease) both; }
+.fern-grow { transform-origin: bottom; animation: fern-grow 520ms var(--fern-ease) both; }
+.fern-draw { stroke-dasharray: 1000; stroke-dashoffset: 1000; animation: fern-draw 800ms var(--fern-ease) both; }
+.fern-digit { animation: fern-digit 360ms var(--fern-ease) both; }
+.fern-bell-ring { transform-origin: top center; animation: fern-bell-ring 650ms ease-in-out; }
+.fern-pop-in { animation: fern-pop-in var(--fern-motion-fast) var(--fern-ease) both; }
+.fern-pop-out { animation: fern-pop-out var(--fern-motion-fast) ease-in both; }
+.fern-notification-row-in { animation: fern-notification-row-in 220ms var(--fern-ease) both; }
+.fern-fade-in { animation: fern-fade-in var(--fern-motion) ease both; }
+
+/* Shared top-to-bottom copy reveal for every non-dashboard workspace page.
+   Large repeating collections stay grouped so long lists and tables do not animate row by row. */
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(h2, h3, h4, p, small, strong, a, button, dt, dd, span, label):not([hidden]):not([aria-hidden='true']):not([data-page-header] *):not(.history-page *):not(.conversion-detail-identity *):not(.workspace-transition-identity):not([role='tabpanel'] *):not([data-account-wallet] *):not(.history-timeline *):not(.history-event *):not(.team-table *):not(.client-card *):not(.bank-card *):not(.template-card *):not(.client-archive-card *):not(.settings-summary-visual *):not(a *):not(button *):not([role='dialog'] *) {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + var(--fern-copy-reveal-delay, 0ms)) both;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(h2, h3, h4, p, small, strong, a, button, dt, dd, span, label):nth-child(2):not([hidden]):not([aria-hidden='true']):not([data-page-header] *):not(.history-page *):not(.history-timeline *):not(.history-event *):not(.team-table *):not(.client-card *):not(.bank-card *):not(.template-card *):not(.client-archive-card *):not(.settings-summary-visual *):not(a *):not(button *):not([role='dialog'] *) {
+  --fern-copy-reveal-delay: 25ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(h2, h3, h4, p, small, strong, a, button, dt, dd, span, label):nth-child(3):not([hidden]):not([aria-hidden='true']):not([data-page-header] *):not(.history-page *):not(.history-timeline *):not(.history-event *):not(.team-table *):not(.client-card *):not(.bank-card *):not(.template-card *):not(.client-archive-card *):not(.settings-summary-visual *):not(a *):not(button *):not([role='dialog'] *) {
+  --fern-copy-reveal-delay: 50ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(h2, h3, h4, p, small, strong, a, button, dt, dd, span, label):nth-child(n + 4):not([hidden]):not([aria-hidden='true']):not([data-page-header] *):not(.history-page *):not(.history-timeline *):not(.history-event *):not(.team-table *):not(.client-card *):not(.bank-card *):not(.template-card *):not(.client-archive-card *):not(.settings-summary-visual *):not(a *):not(button *):not([role='dialog'] *) {
+  --fern-copy-reveal-delay: 75ms;
+}
+
+/* Give the first few visible cards a more detailed reveal, including metadata and status labels.
+   Remaining cards keep their containing list transition instead of animating every row. */
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(.client-card, .bank-card, .template-card, .client-archive-card, .team-stat):nth-child(1) {
+  --fern-card-reveal-delay: 0ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(.client-card, .bank-card, .template-card, .client-archive-card, .team-stat):nth-child(2) {
+  --fern-card-reveal-delay: 45ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(.client-card, .bank-card, .template-card, .client-archive-card, .team-stat):nth-child(3) {
+  --fern-card-reveal-delay: 90ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(.client-card, .bank-card, .template-card, .client-archive-card, .team-stat):nth-child(-n + 3)
+  :is(h2, h3, h4, p, small, strong, a, button, span, label)
+  :not([hidden]):not([aria-hidden='true']):not([data-page-header] *):not(.conversion-detail-identity *):not(.workspace-transition-identity):not([role='tabpanel'] *):not(.statement-shared-identity *):not(.statement-card-details *):not(.statement-card-audit *):not(a *):not(button *):not([role='dialog'] *) {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + var(--fern-card-reveal-delay, 0ms) + var(--fern-copy-reveal-delay, 0ms)) both;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  .client-archive-card:nth-child(-n + 3) :is(.statement-card-details, .statement-card-audit) > div {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + var(--fern-card-reveal-delay, 0ms) + var(--fern-field-reveal-delay, 0ms)) both;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  .client-archive-card:nth-child(-n + 3) :is(.statement-card-details, .statement-card-audit) > div:nth-child(2) {
+  --fern-field-reveal-delay: 25ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  .client-archive-card:nth-child(-n + 3) .statement-card-details > div:nth-child(3) {
+  --fern-field-reveal-delay: 50ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  .client-archive-card:nth-child(-n + 3) .statement-card-details > div:nth-child(4) {
+  --fern-field-reveal-delay: 75ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  [data-page-header] :is(a, button) {
+  animation: fern-content-in 180ms var(--fern-ease)
+    calc(var(--fern-page-stagger-delay, 0ms) + 80ms) both;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(.client-card, .bank-card, .template-card, .client-archive-card, .team-stat):nth-child(-n + 3)
+  :is(h2, h3, h4, p, small, strong, a, button, dt, dd, span, label):nth-child(2) {
+  --fern-copy-reveal-delay: 20ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(.client-card, .bank-card, .template-card, .client-archive-card, .team-stat):nth-child(-n + 3)
+  :is(h2, h3, h4, p, small, strong, a, button, dt, dd, span, label):nth-child(3) {
+  --fern-copy-reveal-delay: 40ms;
+}
+.workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+  :is(.client-card, .bank-card, .template-card, .client-archive-card, .team-stat):nth-child(-n + 3)
+  :is(h2, h3, h4, p, small, strong, a, button, dt, dd, span, label):nth-child(n + 4) {
+  --fern-copy-reveal-delay: 60ms;
+}
+.workspace-route-content > :is(p, [role='status']):not([hidden]):not([aria-hidden='true']) {
+  animation: fern-content-in 180ms var(--fern-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fern-title-letters > span, .fern-shell-sidebar, .fern-shell-topbar, .fern-dialog-in[open],
+  .alias-theme-menu[data-state], .overview-chart-import-line, .overview-chart-export-line,
+  .overview-metric-value, .fern-enter,
+  .fern-grow, .fern-draw, .fern-digit, .fern-bell-ring, .fern-pop-in, .fern-pop-out,
+  .fern-notification-row-in, .fern-fade-in {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+  .workspace-route-content > :is(.ui-page, .conversion-page) > :where(:not(dialog):not([role='dialog'])) {
+    animation: none !important;
+    transform: none !important;
+  }
+  .workspace-route-content .dashboard-overview * {
+    animation: none !important;
+    transform: none !important;
+  }
+  .workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+    :is(h2, h3, h4, p, small, strong, a, button, dt, dd, span, label) {
+    animation: none !important;
+    transform: none !important;
+  }
+  .workspace-route-content > :is(.ui-page, .conversion-page):not(.dashboard-overview)
+    [data-page-header] :is(a, button) {
+    animation: none !important;
+    transform: none !important;
+  }
+  .workspace-route-content > :is(p, [role='status']) {
+    animation: none !important;
+    transform: none !important;
+  }
+}

@@ -15,7 +15,9 @@ public class LocalFileStorage(IConfiguration config, IHostEnvironment environmen
     }
     public async Task<string> SaveAsync(Stream stream, string category, string extension, CancellationToken ct)
     {
-        Validation.Require((category == "input" && extension == "pdf") || (category == "exports" && extension is "csv" or "txt"), "Type de stockage invalide.");
+        Validation.Require((category == "input" && extension == "pdf")
+            || (category == "exports" && extension is "csv" or "txt")
+            || (category == "entry-exports" && extension is "csv" or "txt" or "tsv"), "Type de stockage invalide.");
         var key = $"{category}/{Guid.NewGuid():N}.{extension}";
         var path = Resolve(key);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);

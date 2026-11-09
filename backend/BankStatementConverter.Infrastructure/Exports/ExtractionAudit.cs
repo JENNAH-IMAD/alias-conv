@@ -8,7 +8,7 @@ namespace BankStatementConverter.Infrastructure.Exports;
 public static class ExtractionAudit
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(1);
-    private const string DatePattern = @"\b\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?\b";
+    private const string DatePattern = @"\b\d{1,2}(?:[/.-]|[ \t]+)\d{1,2}(?:(?:[/.-]|[ \t]+)\d{2,4})?\b";
     private const string AmountPattern = @"\d[\d \u00a0\u202f.,]*[,.]\d{2}(?!\d)";
 
     public static int ExpectedRows(PdfTextPage page)
@@ -37,6 +37,9 @@ public static class ExtractionAudit
     public static IReadOnlyList<ExportError> Errors(BankStatement statement, PdfTextDocument document)
     {
         var errors = new List<ExportError>();
+        if (document.SourcePageCount is > 0 && !Enumerable.Range(1, document.SourcePageCount.Value)
+            .SequenceEqual(document.Pages.Select(page => page.Number).Order()))
+            errors.Add(new("EXTRACTION_MISSING_PAGES", "La lecture ne couvre pas toutes les pages du PDF original. Relancez le traitement complet avant validation."));
         var unreliable = document.Pages.Where(page => page.HasUnreliableText).Select(page => page.Number).ToArray();
         if (unreliable.Length > 0)
             errors.Add(new("EXTRACTION_UNREADABLE_TEXT", $"Le texte interne des pages {string.Join(", ", unreliable)} n’a pas permis une lecture bancaire fiable. Une lecture OCR du rendu visuel est nécessaire avant validation."));
@@ -61,29 +64,6 @@ public static class ExtractionAudit
         return errors;
     }
 
-    public static IReadOnlyList<ExportError> EvidenceWarnings(BankStatement statement, PdfTextDocument result, PdfTextDocument local)
-    {
-        var warnings = new List<ExportError>();
-        foreach (var page in result.Pages.Where(page => page.ReadingMethod == "OPENROUTER"))
-        {
-            var original = local.Pages.FirstOrDefault(source => source.Number == page.Number);
-            var text = string.Join('\n', original?.Boxes.Select(box => box.Text) ?? []);
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                warnings.Add(new("EXTRACTION_AI_NO_LOCAL_EVIDENCE", $"La page {page.Number} a été lue par l’IA sans texte local indépendant exploitable. Comparez tous ses mouvements avec le PDF original."));
-                continue;
-            }
-            var observed = Regex.Matches(text, @"(?<![\w/])[-+]?\d+(?:(?:[ \u00a0\u202f]+|[.,])\d{3})*[,.]\d{2}(?!\d)", RegexOptions.None, Timeout)
-                .Select(match => StatementValueParser.Money(match.Value)).Where(value => value.HasValue).Select(value => Math.Abs(value!.Value)).ToHashSet();
-            foreach (var transaction in statement.Transactions.Where(transaction => transaction.SourcePages?.Contains(page.Number) == true))
-            {
-                if (new[] { transaction.Debit, transaction.Credit }.Any(value => value.HasValue && !observed.Contains(Math.Abs(value.Value))))
-                    warnings.Add(new("EXTRACTION_AI_AMOUNT_UNSUPPORTED", $"Un montant du mouvement {transaction.Sequence}, page {page.Number}, n’est pas retrouvé dans la lecture locale indépendante. Vérifiez le montant sur l’original ; aucune valeur n’a été remplacée automatiquement.", transaction.Sequence, SourceField: "Amount"));
-            }
-        }
-        return warnings;
-    }
-
     internal static int RowDefects(PdfStatementExtraction? extraction, PdfTextPage page)
     {
         if (extraction == null || extraction.Statement.Transactions.Count == 0)
@@ -91,6 +71,8 @@ public static class ExtractionAudit
         var rows = extraction.Statement.Transactions;
         return Math.Max(0, ExpectedRows(page) - rows.Count) * 10 + rows.Sum(row =>
             (row.Date.HasValue ? 0 : 1) + (string.IsNullOrWhiteSpace(row.Description) ? 1 : 0)
-            + (row.Debit.HasValue != row.Credit.HasValue ? 0 : 2));
+            + (row.Debit.HasValue != row.Credit.HasValue ? 0 : 2))
+            + new StatementValidator().Validate(extraction.Statement).Errors.Count
+            + extraction.Warnings.Count(w => w.Code is "PDF_DATE_UNREADABLE" or "PDF_TABLE_REPEATED_TOTAL");
     }
 }

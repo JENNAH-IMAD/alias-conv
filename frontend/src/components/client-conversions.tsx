@@ -1,27 +1,22 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState, ViewTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Download,
-  Archive,
-  History,
   FileText,
   Plus,
-  Eye,
   ArrowUpRight,
-  RefreshCw,
   Search,
   Trash2,
 } from 'lucide-react';
-import { documentBlob, Page, saveBlob, request } from '@/services/api';
+import { Page, request } from '@/services/api';
 import { useAuth } from './auth-context';
 import { useApi } from '@/services/use-api';
 import { accountSuffix, date } from '@/services/statement-exports';
 import { Button } from './ui/button';
 import { LoadState } from './ui/load-state';
 import { Pagination } from './ui/pagination';
-import { ExportArchive } from './export-archive';
 import { BankDialog } from './bank-dialogs';
+import { conversionTransitionName, useDetailTransition } from './route-detail-transition';
 type ArchiveStatement = {
   id: string;
   clientId: string | null;
@@ -45,6 +40,11 @@ type ArchiveStatement = {
   exportCount: number;
   lastExportAt: string | null;
 };
+type ModelFilterOption = {
+  id: string;
+  kind: 'entry-output' | 'export';
+  label: string;
+};
 export function ClientConversions({
   clientId,
   conversionType = 'STATEMENT',
@@ -53,10 +53,10 @@ export function ClientConversions({
   conversionType?: 'STATEMENT' | 'EXTRACT';
 }) {
   const router = useRouter();
+  const { remember } = useDetailTransition();
   const documentLabel = conversionType === 'EXTRACT' ? 'extrait' : 'relevé';
   const { can } = useAuth();
   const [selection, setSelection] = useState<ArchiveStatement[]>([]);
-  const [validating, setValidating] = useState<ArchiveStatement | null>(null);
   const [deleting, setDeleting] = useState<ArchiveStatement[] | null>(null);
   function select(items: ArchiveStatement[]) {
     setSelectedScope(selectionScope);
@@ -73,7 +73,6 @@ export function ClientConversions({
       });
       select([]);
       setDeleting(null);
-      setArchive(null);
       if (statements.data?.items.length === deleting.length && page > 1) setPage(page - 1);
       else statements.reload();
     } catch (e) {
@@ -83,15 +82,14 @@ export function ClientConversions({
     }
   }
   const [page, setPage] = useState(1);
-  const [archive, setArchive] = useState<ArchiveStatement | null>(null);
   const [scope, setScope] = useState('all');
   const [status, setStatus] = useState('');
+  const [modelFilter, setModelFilter] = useState('');
   const [search, setSearch] = useState('');
   const [term, setTerm] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [original, setOriginal] = useState<{ name: string; url: string } | null>(null);
-  const selectionScope = [page, scope, status, term].join('|');
+  const selectionScope = [page, scope, status, term, modelFilter].join('|');
   const [selectedScope, setSelectedScope] = useState(selectionScope);
   const selected = selectedScope === selectionScope ? selection : [];
   const query = new URLSearchParams({ page: String(page), pageSize: '20' });
@@ -99,34 +97,13 @@ export function ClientConversions({
   if (!clientId && scope === 'unassigned') query.set('unassigned', 'true');
   if (status) query.set('status', status);
   if (term) query.set('search', term);
+  const [modelKind, modelId] = modelFilter ? modelFilter.split(':', 2) : ['', ''];
+  if (modelKind === 'entry-output' && modelId) query.set('entryOutputTemplateId', modelId);
+  if (modelKind === 'export' && modelId) query.set('exportTemplateId', modelId);
+  const modelOptions = useApi<ModelFilterOption[]>('/client-workspace/model-filters');
   const statements = useApi<Page<ArchiveStatement>>(
     `/client-workspace/${clientId ? `${clientId}/` : ''}statements?${query}`,
   );
-  useEffect(
-    () => () => {
-      if (original) URL.revokeObjectURL(original.url);
-    },
-    [original],
-  );
-  async function file(item: ArchiveStatement, kind: 'preview' | 'original' | 'standard') {
-    setBusy(item.id);
-    setError('');
-    try {
-      const blob = await documentBlob(
-        `/statement-imports/${item.id}/${kind === 'standard' ? 'standard' : `original${kind === 'original' ? '?download=true' : ''}`}`,
-      );
-      const name =
-        kind === 'standard'
-          ? `${(item.sourceFileName ?? 'releve').replace(/\.pdf$/i, '')}_standard.csv`
-          : (item.sourceFileName ?? 'releve.pdf');
-      if (kind === 'preview') setOriginal({ name, url: URL.createObjectURL(blob) });
-      else saveBlob(blob, name);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy('');
-    }
-  }
   return (
     <div className="statement-archive space-y-5">
       <div className="statement-archive-heading">
@@ -222,15 +199,27 @@ export function ClientConversions({
             <option value="VALIDATED">Validés</option>
           </select>
         </label>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={statements.loading}
-          onClick={statements.reload}
-          aria-label="Actualiser les archives"
-        >
-          <RefreshCw size={16} />
-        </Button>
+        <label>
+          Modèle d’exportation
+          <select
+            aria-label="Filtrer par modèle d’exportation"
+            className="ui-input mt-2"
+            value={modelFilter}
+            onChange={(event) => {
+              setModelFilter(event.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Tous les modèles</option>
+            {(modelOptions.data ?? []).map((model) => (
+              <option key={`${model.kind}:${model.id}`} value={`${model.kind}:${model.id}`}>
+                {model.kind === 'entry-output'
+                  ? `${model.label} · Écritures comptables`
+                  : model.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </form>
       {!clientId && (
         <p className="muted text-sm">
@@ -331,18 +320,26 @@ export function ClientConversions({
                               }
                             />
                           )}
-                          <span className="statement-card-icon">
-                            <FileText size={22} />
-                          </span>
-                          <div>
-                            <h3>{item.sourceFileName || item.bankName}</h3>
-                            <p className="statement-archive-owner">
-                              {item.clientName ||
-                                (item.clientId
-                                  ? 'Client associé'
-                                  : 'À classer · aucun client associé')}
-                            </p>
-                          </div>
+                          <ViewTransition
+                            name={conversionTransitionName(item.id)}
+                            share="workspace-detail"
+                            default="none"
+                          >
+                            <div className="statement-shared-identity">
+                              <span className="statement-card-icon">
+                                <FileText size={22} />
+                              </span>
+                              <div>
+                                <h3>{item.sourceFileName || item.bankName}</h3>
+                                <p className="statement-archive-owner">
+                                  {item.clientName ||
+                                    (item.clientId
+                                      ? 'Client associé'
+                                      : 'À classer · aucun client associé')}
+                                </p>
+                              </div>
+                            </div>
+                          </ViewTransition>
                         </div>
                         <span
                           className={item.status === 'VALIDATED' ? 'status-positive' : 'ui-tag'}
@@ -419,20 +416,26 @@ export function ClientConversions({
                         )}
                       </dl>
                       <div className="client-archive-actions">
-                        {item.status !== 'VALIDATED' && (
-                          <Button
-                            permission="documents.write"
-                            size="sm"
-                            variant="outline"
-                            disabled={!!busy}
-                            onClick={() => {
-                              setError('');
-                              setValidating(item);
-                            }}
-                          >
-                            Confirmer la vérification
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          className="statement-card-open"
+                          onClick={() => {
+                            remember({
+                              name: conversionTransitionName(item.id),
+                              title: item.sourceFileName || item.bankName,
+                              subtitle: item.clientName || 'Document bancaire',
+                            });
+                            router.push(
+                              `/conversions?statementId=${item.id}${conversionType === 'EXTRACT' ? '&type=extract' : ''}`,
+                              { transitionTypes: ['detail-navigation'] },
+                            );
+                          }}
+                        >
+                          {conversionType === 'EXTRACT'
+                            ? 'Ouvrir la conversion'
+                            : 'Ouvrir le relevé'}
+                          <ArrowUpRight size={14} />
+                        </Button>
                         <Button
                           permission="documents.write"
                           size="sm"
@@ -445,57 +448,6 @@ export function ClientConversions({
                         >
                           <Trash2 size={14} /> Supprimer
                         </Button>
-
-                        <Button
-                          size="sm"
-                          className="statement-card-open"
-                          onClick={() =>
-                            router.push(
-                              `/conversions?statementId=${item.id}${conversionType === 'EXTRACT' ? '&type=extract' : ''}`,
-                            )
-                          }
-                        >
-                          {conversionType === 'EXTRACT'
-                            ? 'Ouvrir la conversion'
-                            : 'Ouvrir le relevé'}
-                          <ArrowUpRight size={14} />
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => router.push(`/history?statementId=${item.id}`)}
-                        >
-                          <History size={14} />
-                          Historique
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => setArchive(item)}>
-                          <Archive size={14} />
-                          Exports & versions
-                        </Button>
-                        {item.sourceFileName && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!!busy}
-                              onClick={() => void file(item, 'preview')}
-                            >
-                              <Eye size={14} />
-                              PDF
-                            </Button>
-                            <Button
-                              permission="documents.export"
-                              size="sm"
-                              variant="outline"
-                              disabled={!!busy}
-                              onClick={() => void file(item, 'original')}
-                            >
-                              <Download size={14} />
-                              Original
-                            </Button>
-                          </>
-                        )}
                       </div>
                     </article>
                   ))}
@@ -508,51 +460,6 @@ export function ClientConversions({
           <Pagination page={page} total={statements.data.total} onChange={setPage} />
         )}
       </>
-      {validating && (
-        <BankDialog
-          title="Confirmer la vérification"
-          busy={!!busy}
-          onClose={() => {
-            if (!busy) setValidating(null);
-          }}
-        >
-          <p>
-            Je confirme avoir vérifié les données du relevé «{' '}
-            {validating.sourceFileName || validating.bankName} » avec le PDF original.
-          </p>
-          {error && (
-            <p role="alert" className="text-destructive">
-              {error}
-            </p>
-          )}
-          <div className="mt-5 flex justify-end gap-3">
-            <Button variant="outline" disabled={!!busy} onClick={() => setValidating(null)}>
-              Annuler
-            </Button>
-            <Button
-              disabled={!!busy}
-              onClick={async () => {
-                setBusy('validate');
-                setError('');
-                try {
-                  await request(`/statement-imports/${validating.id}/validate`, {
-                    method: 'POST',
-                    body: JSON.stringify({ version: validating.version }),
-                  });
-                  setValidating(null);
-                  statements.reload();
-                } catch (e) {
-                  setError((e as Error).message);
-                } finally {
-                  setBusy('');
-                }
-              }}
-            >
-              Confirmer et valider
-            </Button>
-          </div>
-        </BankDialog>
-      )}
       {deleting && (
         <BankDialog
           title="Supprimer les relevés"
@@ -583,20 +490,6 @@ export function ClientConversions({
               {busy === 'delete' ? 'Suppression…' : 'Supprimer définitivement'}
             </Button>
           </div>
-        </BankDialog>
-      )}
-      {archive && (
-        <BankDialog
-          title={`Exports · ${archive.sourceFileName || archive.bankName}`}
-          wide
-          onClose={() => setArchive(null)}
-        >
-          <ExportArchive statementId={archive.id} />
-        </BankDialog>
-      )}
-      {original && (
-        <BankDialog title={original.name} wide onClose={() => setOriginal(null)}>
-          <iframe title={original.name} src={original.url} className="h-[70vh] w-full" />
         </BankDialog>
       )}
     </div>

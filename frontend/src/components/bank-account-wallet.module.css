@@ -1,0 +1,748 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(340px, 0.88fr);
+  gap: 24px;
+  align-items: start;
+}
+.stage,
+.panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: 0 6px 28px rgb(30 48 75 / 4%);
+}
+.stage {
+  overflow: hidden;
+  padding: 24px 0 20px;
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    color-mix(in srgb, #9fc1ec 25%, var(--surface)),
+    var(--surface) 72%
+  );
+}
+.stageHeading {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 25px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+.stageHeading > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--foreground);
+}
+.deck {
+  animation: walletEnter 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  --card-width: min(400px, 77%);
+  width: 100%;
+  min-width: 0;
+  height: clamp(245px, 24vw, 335px);
+  position: relative;
+  margin-top: 20px;
+  isolation: isolate;
+  perspective: 1400px;
+  touch-action: pan-y;
+  cursor: grab;
+  user-select: none;
+  outline-offset: -5px;
+}
+.deck[data-dragging] {
+  cursor: grabbing;
+}
+.deck:focus-visible {
+  outline: 2px solid var(--ring);
+  border-radius: 16px;
+}
+.bankCard {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--card-width);
+  aspect-ratio: 1.586;
+  border: 0;
+  padding: 0;
+  border-radius: 22px;
+  background: transparent;
+  cursor: inherit;
+  transform: translate(-50%, -50%) translateX(var(--offset-x, 0%)) scale(var(--scale));
+  transition:
+    transform 650ms cubic-bezier(0.2, 0.75, 0.15, 1),
+    opacity 500ms ease;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.bankCard:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 7px;
+}
+.deck[data-dragging] .bankCard {
+  transition: none;
+}
+.flip {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 700ms cubic-bezier(0.45, 0, 0.2, 1);
+  border-radius: inherit;
+  position: relative;
+}
+.flip[data-flipped='true'] {
+  transform: rotateY(180deg);
+}
+.face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: inherit;
+  padding: 23px 27px;
+  text-align: left;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  color: var(--card-ink, #ffffff);
+  background: var(--card-skin);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 32%),
+    0 18px 26px -16px rgb(15 31 53 / 45%);
+}
+.bankCard,
+.swatch,
+.bankIcon {
+  --card-skin: linear-gradient(120deg, #b7d9fb, #88b6e8);
+}
+.front::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  width: 90%;
+  height: 140%;
+  right: -36%;
+  top: -17%;
+  border: 1px solid rgb(255 255 255 / 23%);
+  border-radius: 48%;
+  transform: rotate(28deg);
+  box-shadow:
+    0 0 0 30px rgb(255 255 255 / 4%),
+    0 0 0 60px rgb(255 255 255 / 4%),
+    0 0 0 90px rgb(255 255 255 / 4%);
+}
+.cardTop,
+.cardMiddle,
+.cardBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+.cardBrand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+}
+.brandBankLogo,
+.detailBankLogo,
+.selectorBankLogo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  background: var(--card-skin, var(--logo-fallback));
+  color: var(--card-ink, #fff);
+}
+.brandBankLogo {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 24%);
+}
+.brandBankLogo img,
+.detailBankLogo img,
+.selectorBankLogo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+  padding: 0;
+  mix-blend-mode: normal;
+}
+/* Bank logo files have different built-in whitespace. Normalize the visible mark
+   per brand while the fixed wrapper clips excess pixels consistently. */
+.brandBankLogo[data-bank='agricole'] img,
+.detailBankLogo[data-bank='agricole'] img,
+.selectorBankLogo[data-bank='agricole'] img {
+  transform: scale(1.7);
+}
+.brandBankLogo[data-bank='barid'] img,
+.detailBankLogo[data-bank='barid'] img,
+.selectorBankLogo[data-bank='barid'] img {
+  transform: scale(1.12);
+}
+.brandBankLogo[data-bank='attijari'] img,
+.detailBankLogo[data-bank='attijari'] img,
+.selectorBankLogo[data-bank='attijari'] img,
+.brandBankLogo[data-bank='bmci'] img,
+.detailBankLogo[data-bank='bmci'] img,
+.selectorBankLogo[data-bank='bmci'] img {
+  transform: scale(1.08);
+}
+.brandBankLogo[data-bank='boa'] img,
+.detailBankLogo[data-bank='boa'] img,
+.selectorBankLogo[data-bank='boa'] img,
+.brandBankLogo[data-bank='cdm'] img,
+.detailBankLogo[data-bank='cdm'] img,
+.selectorBankLogo[data-bank='cdm'] img {
+  transform: scale(1.3);
+}
+.brandBankLogo > svg {
+  width: 20px;
+  height: 20px;
+}
+.brandDot {
+  font-size: 8px;
+  align-self: flex-start;
+  margin: 4px 0 0 -3px;
+}
+.currency {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.cardBank {
+  font-size: 11px;
+  opacity: 0.8;
+  margin-top: 5px;
+  max-width: 90%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cardMiddle {
+  margin-top: auto;
+  padding-top: 14px;
+}
+.chip {
+  width: 36px;
+  height: 27px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #eee4c5, #b8b197);
+  border: 1px solid #9f9c8566;
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1fr;
+  overflow: hidden;
+}
+.chip i {
+  border-right: 1px solid #97927d77;
+  border-bottom: 1px solid #97927d77;
+  height: 55%;
+  align-self: center;
+}
+.accountKind {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  opacity: 0.65;
+}
+.maskedNumber {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 13px 0 17px;
+  font-family: var(--font-mono), monospace;
+  font-size: clamp(18px, 2vw, 25px);
+  letter-spacing: 4px;
+  position: relative;
+  z-index: 1;
+}
+.cardBottom {
+  font-size: 13px;
+  font-weight: 650;
+}
+.cardBottom > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cardMark {
+  display: flex;
+  flex: none;
+  padding-left: 10px;
+}
+.cardMark i {
+  width: 23px;
+  height: 23px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.65;
+}
+.cardMark i + i {
+  margin-left: -10px;
+}
+.back {
+  padding: 0;
+  transform: rotateY(180deg);
+}
+.backBand {
+  height: 38px;
+  margin-top: 23px;
+  background: #142430;
+  opacity: 0.88;
+  flex: none;
+}
+.backContent {
+  padding: 14px 24px;
+  display: grid;
+  gap: 8px;
+}
+.backLabel {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.75;
+}
+.backNumber {
+  font: 600 clamp(10px, 1.2vw, 15px) / 1.5 monospace;
+  overflow-wrap: anywhere;
+  letter-spacing: 0.7px;
+}
+.backParameters {
+  display: flex;
+  gap: 24px;
+  font-size: 9px;
+  opacity: 0.9;
+}
+.backParameters b {
+  display: block;
+  font: 600 12px/1.8 monospace;
+}
+.backFoot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  opacity: 0.7;
+}
+.navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+}
+.navigation button {
+  width: 33px;
+  height: 33px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background 150ms;
+}
+.navigation button:hover:not(:disabled) {
+  background: var(--accent);
+}
+.navigation button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.navigation button:focus-visible,
+.selector:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+.counter {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.hint {
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  margin: 14px 14px 22px;
+}
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 20px 22px 0;
+  border-top: 1px solid var(--border);
+}
+.selector {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 180ms,
+    box-shadow 180ms;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--foreground);
+}
+.selector[aria-pressed='true'] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.selector b {
+  display: block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.selector small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.selectorBankLogo {
+  width: 42px;
+  height: 34px;
+  border-radius: 6px;
+}
+.selectorBankLogo > svg {
+  width: 18px;
+  height: 18px;
+}
+.swatch {
+  display: block;
+  width: 35px;
+  height: 24px;
+  flex: none;
+  border-radius: 5px;
+  background: var(--card-skin);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 5%);
+}
+.newAccount {
+  align-self: center;
+  font-size: 11px;
+}
+.panel {
+  padding: 23px 26px 10px;
+}
+.panelLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  padding-bottom: 21px;
+}
+.details {
+  animation: detailEnter 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.detailHeading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 22px;
+}
+.detailHeading > div {
+  flex: 1;
+  min-width: 0;
+}
+.detailHeading h2 {
+  font-size: 21px;
+  font-weight: 750;
+  letter-spacing: -0.7px;
+  overflow-wrap: anywhere;
+}
+.detailHeading p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+.bankIcon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 16px;
+  background: var(--card-skin);
+  color: var(--card-ink, #ffffff);
+}
+.detailBankLogo {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 25%);
+}
+.detailBankLogo > svg {
+  width: 25px;
+  height: 25px;
+}
+.currencyTag {
+  align-self: flex-start;
+  color: var(--success-text);
+  background: color-mix(in srgb, var(--success) 9%, var(--surface));
+  padding: 5px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 650;
+}
+.detailSection {
+  border-top: 1px solid var(--border);
+  padding: 19px 0;
+}
+.detailSection h3 {
+  font-size: 12px;
+  font-weight: 700;
+}
+.labelRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.labelRow > span {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.fullNumber {
+  font: 500 clamp(12px, 1.15vw, 17px) / 1.7 monospace;
+  letter-spacing: 0.8px;
+  margin: 14px 0 16px;
+  overflow-wrap: anywhere;
+}
+.revealActions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.revealActions button {
+  font-size: 11px;
+}
+.feedback {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.feedback:not(:empty) {
+  margin-top: 12px;
+}
+.parameters {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+}
+.parameters > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.parameterIcon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: var(--muted-foreground);
+  flex: none;
+}
+.parameters dt {
+  flex: 1;
+  font-size: 12px;
+}
+.parameters small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  margin-top: 3px;
+}
+.parameters dd {
+  font: 600 12px/1.5 monospace;
+  text-align: right;
+  overflow-wrap: anywhere;
+  max-width: 45%;
+}
+.ready {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.ready > svg {
+  color: var(--primary);
+  flex: none;
+  margin-top: 2px;
+}
+.ready b {
+  font-size: 11px;
+  font-weight: 650;
+  display: block;
+}
+.ready small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+  margin-top: 3px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 0 0 20px;
+}
+.actions > :first-child {
+  flex: 1;
+}
+.actions > * {
+  font-size: 12px;
+}
+.deleteRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding: 12px 0 4px;
+  gap: 8px;
+}
+.deleteRow > span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.deleteRow button {
+  font-size: 11px;
+}
+@keyframes detailEnter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes walletEnter {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (min-width: 1550px) {
+  .deck {
+    height: 350px;
+  }
+}
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .deck {
+    height: 330px;
+  }
+}
+@media (max-width: 520px) {
+  .layout {
+    gap: 16px;
+  }
+  .stage,
+  .panel {
+    border-radius: 18px;
+  }
+  .stage {
+    padding-top: 18px;
+  }
+  .deck {
+    --card-width: 79%;
+    height: clamp(210px, 63vw, 300px);
+    margin-top: 12px;
+  }
+  .face {
+    padding: 17px 19px;
+  }
+  .cardBrand {
+    font-size: 16px;
+  }
+  .cardBank {
+    font-size: 9px;
+  }
+  .cardMiddle {
+    padding-top: 8px;
+  }
+  .chip {
+    width: 30px;
+    height: 23px;
+  }
+  .maskedNumber {
+    margin: 10px 0 12px;
+    font-size: 19px;
+  }
+  .cardBottom {
+    font-size: 11px;
+  }
+  .cardMark i {
+    width: 19px;
+    height: 19px;
+  }
+  .accountKind {
+    font-size: 7px;
+    letter-spacing: 0.8px;
+  }
+  .backBand {
+    height: 29px;
+    margin-top: 17px;
+  }
+  .backContent {
+    padding: 10px 18px;
+    gap: 5px;
+  }
+  .backNumber {
+    font-size: 11px;
+  }
+  .backFoot {
+    font-size: 8px;
+  }
+  .strip {
+    padding: 16px 16px 0;
+  }
+  .hint {
+    font-size: 9px;
+  }
+  .panel {
+    padding: 20px 18px 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bankCard,
+  .flip,
+  .selector {
+    transition-duration: 0s;
+  }
+  .details,
+  .deck {
+    animation: none;
+  }
+}

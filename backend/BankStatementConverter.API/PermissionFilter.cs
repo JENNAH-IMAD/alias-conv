@@ -34,8 +34,9 @@ public sealed class PermissionFilter : IAsyncAuthorizationFilter
             "Clients" or "ClientPhoto" => "clients",
             "Banks" or "BankLogo" => "banks",
             "Accounts" => "accounts",
-            "Exports" => "templates",
-            "Documents" or "ClientWorkspace" or "StatementImports" or "StatementExports" or "ExtractionProfiles" => "documents",
+            "AccountingEntryModels" => "documents",
+            "Exports" or "EntryOutputTemplates" => "templates",
+            "ClientWorkspace" or "StatementImports" or "StatementExports" or "StatementTreatments" or "ExtractionProfiles" => "documents",
             "CatalogDeletion" => context.RouteData.Values["resource"]?.ToString(),
             _ => null
         };
@@ -43,6 +44,16 @@ public sealed class PermissionFilter : IAsyncAuthorizationFilter
         if (action.ControllerName == "Banks" && action.ActionName == "Accounts")
             area = "accounts";
         var operation = HttpMethods.IsGet(method) ? "read" : "write";
+        if (HttpMethods.IsGet(method) && action.ActionName == "History"
+            && action.ControllerName is "ClientWorkspace" or "ExtractionProfiles")
+        {
+            if (user.IsInRole("Admin")) return Task.CompletedTask;
+            area = "history";
+        }
+        if (action.ControllerName == "EntryOutputTemplates" && action.ActionName == "List" && HttpMethods.IsGet(method)
+            && (user.HasClaim("permission", "templates.read") || user.HasClaim("permission", "documents.read")))
+            return Task.CompletedTask;
+        if (action.ControllerName == "EntryOutputTemplates" && action.ActionName == "Download") { area = "documents"; operation = "export"; }
         if (action.ControllerName == "CatalogDeletion")
             operation = "write";
         if (action.ControllerName == "CatalogDeletion" && !HttpMethods.IsGet(method) &&
@@ -51,9 +62,14 @@ public sealed class PermissionFilter : IAsyncAuthorizationFilter
             Deny(context);
             return Task.CompletedTask;
         }
+        if (action.ControllerName == "AccountingEntryModels" && action.ActionName == "Preview") operation = "read";
+        if (action.ControllerName == "AccountingEntryModels" && action.ActionName == "Export") operation = "export";
+        if (action.ControllerName == "AccountingEntryModels" && action.ActionName is "ModelFile" or "ArchiveFile") operation = "export";
         if (action.ControllerName == "StatementExports")
-            operation = action.ActionName == "Download" || action.ActionName == "ArchivedDownload" ? "export" : "read";
-        if (action.ControllerName == "StatementImports" && action.ActionName is "StandardDownload" or "CompleteDownload" or "NormalizedPdf" or "ConversionReport" or "DownloadExtract" or "SourceText")
+            operation = action.ActionName == "Download" || action.ActionName == "ArchivedDownload"
+                ? "export"
+                : action.ActionName == "DeleteArchived" ? "write" : "read";
+        if (action.ControllerName == "StatementImports" && action.ActionName is "StandardDownload" or "CompleteDownload" or "NormalizedPdf" or "DownloadExtract" or "SourceText")
             operation = "export";
         if (action.ControllerName == "StatementImports" && action.ActionName is "NormalizedPdf" or "SourceText" && bool.TryParse(context.HttpContext.Request.Query["preview"], out var preview) && preview)
             operation = "read";

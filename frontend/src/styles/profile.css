@@ -1,0 +1,90 @@
+.profile-page {
+  max-width: 1040px;
+  margin-inline: auto;
+}
+.profile-card {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.profile-form-section {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+}
+.profile-form-section + .profile-form-section {
+  border-top: 1px solid var(--border);
+}
+.profile-section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--link);
+}
+.profile-section-heading > svg { flex: 0 0 auto; margin-top: 2px; }
+.profile-section-heading h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 700;
+}
+.profile-section-heading p {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.profile-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.profile-fields > label {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+.profile-field-hint {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 400;
+}
+.profile-feedback {
+  margin: 0 24px;
+  padding: 11px 13px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+.profile-feedback.is-error {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+}
+.profile-feedback.is-success {
+  color: var(--success, #13805c);
+  background: color-mix(in srgb, #16a36a 9%, transparent);
+}
+.profile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-alt);
+}
+.profile-actions > span { color: var(--muted-foreground); font-size: 11px; }
+@media (max-width: 640px) {
+  .profile-form-section { padding: 19px 16px; }
+  .profile-fields { grid-template-columns: minmax(0, 1fr); }
+  .profile-feedback { margin-inline: 16px; }
+  .profile-actions { align-items: stretch; flex-direction: column; padding: 16px; }
+  .profile-actions > .ui-button { width: 100%; }
+}

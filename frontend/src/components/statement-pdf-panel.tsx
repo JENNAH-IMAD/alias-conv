@@ -34,12 +34,28 @@ export function StatementPdfPanel({
           className="pdf-display-toggle"
           aria-expanded={!collapsed}
           aria-controls={`pdf-content-${id}`}
+          aria-label={
+            collapsed
+              ? 'Afficher l’aperçu du document'
+              : 'Masquer l’aperçu pour agrandir le tableau'
+          }
+          title={
+            collapsed
+              ? 'Afficher l’aperçu du document'
+              : 'Masquer l’aperçu pour agrandir le tableau'
+          }
           onClick={onToggle}
         >
-          <FileText size={18} /> Affichage des PDF <ChevronDown size={18} />
+          <span className="pdf-panel-title">
+            <FileText size={18} /> Documents
+          </span>
+          <span className="pdf-panel-state">
+            {collapsed ? 'Afficher le PDF' : 'Aperçu du document'}
+          </span>
+          <ChevronDown size={16} />
         </button>
       )}
-      <div id={`pdf-content-${id}`} hidden={collapsed}>
+      <div className="pdf-panel-content" id={`pdf-content-${id}`} hidden={collapsed}>
         <div className="pdf-view-switch" role="group" aria-label="Choisir le PDF à consulter">
           <Button
             type="button"
@@ -72,8 +88,8 @@ export function StatementPdfPanel({
         </div>
         {view === 'converted' && !extractId && (
           <p className="pdf-view-note">
-            Transcription du relevé source : mêmes champs et valeurs lus, indépendamment du modèle
-            d’exportation. Les corrections des mouvements sont reprises dans le fichier exporté.
+            Champs et valeurs du PDF source. Les corrections des mouvements sont reprises dans le
+            fichier exporté.
           </p>
         )}
         {view === 'converted' && unsaved && extractId && (
@@ -82,7 +98,7 @@ export function StatementPdfPanel({
             dernière version enregistrée.
           </p>
         )}
-        <div hidden={view !== 'original'}>
+        <div className="pdf-original-view" hidden={view !== 'original'}>
           <StatementPdfViewer
             id={id}
             hasExtraction={false}

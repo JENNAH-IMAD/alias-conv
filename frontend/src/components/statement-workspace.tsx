@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { StatementDiagnostics } from './statement-diagnostics';
+import { StatementReadingComparison } from './statement-reading-comparison';
 import { StatementEditableCell } from './statement-editable-cell';
 import { cellKind, previewEditTarget } from '@/lib/statement-preview-editing';
 import { statementPreviewRows } from '@/lib/statement-preview-rows';
@@ -31,21 +32,14 @@ import { absoluteBalance, balanceDirection } from '@/lib/statement-balance';
 import { ConversionSteps } from './conversion-steps';
 import { StatementPdfPanel } from './statement-pdf-panel';
 import type { EditableTransactionField } from '@/lib/statement-row-editing';
-import {
-  API_URL,
-  ApiError,
-  ExportDiagnostic,
-  ExportTemplate,
-  request,
-  documentBlob,
-  saveBlob,
-} from '@/services/api';
+import { API_URL, ApiError, ExportDiagnostic, ExportTemplate, request } from '@/services/api';
 import {
   accountSuffix,
   BankStatement,
   date,
   downloadExport,
   ExportPreview,
+  ExportColumnFilter,
   money,
   separator,
   StatementDetail,
@@ -53,14 +47,17 @@ import {
 } from '@/services/statement-exports';
 import { useUnsavedChanges, confirmDiscard } from '@/lib/use-unsaved-changes';
 import { useAuth } from './auth-context';
+import { useApi } from '@/services/use-api';
+import type { EntryOutputTemplate } from '@/services/entry-models';
 import { ExportArchive } from './export-archive';
 import { StatementAssociation } from './statement-association';
 import { ExportTemplateEditor } from './export-template-editor';
+import { isAccountingTemplate } from '@/services/export-template-defaults';
 import { BankDialog } from './bank-dialogs';
 import { StatementColumnEditor } from './statement-column-editor';
 import { StatementExtractPanel } from './statement-extract-panel';
-import { filterStatementRows } from '@/lib/statement-extract';
 import { editTransactionValue, newStatementTransaction } from '@/lib/statement-row-editing';
+import { downloadExcel } from '@/lib/download-excel';
 import {
   canChooseExportLocation,
   chooseExportDestination,
@@ -68,6 +65,12 @@ import {
 } from '@/lib/save-export';
 
 const subscribeToBrowserCapabilities = () => () => {};
+const compactReviewQuery = '(max-width: 1179px)';
+function subscribeToReviewViewport(listener: () => void) {
+  const query = window.matchMedia(compactReviewQuery);
+  query.addEventListener('change', listener);
+  return () => query.removeEventListener('change', listener);
+}
 export function StatementWorkspace({
   detail,
   templates,
@@ -82,6 +85,7 @@ export function StatementWorkspace({
   onImport,
   extractMode = detail.statement.conversionType === 'EXTRACT',
   initialExtractId,
+  sourceReviewOnly = false,
 }: {
   guided?: boolean;
   initialPreview?: ExportPreview;
@@ -90,6 +94,7 @@ export function StatementWorkspace({
   onImport?: () => void;
   extractMode?: boolean;
   initialExtractId?: string;
+  sourceReviewOnly?: boolean;
   detail: StatementDetail;
   templates: ExportTemplate[];
   templateId: string;
@@ -98,6 +103,9 @@ export function StatementWorkspace({
   onTemplatesChanged: (id: string) => void;
 }) {
   const { can } = useAuth();
+  const entryFormats = useApi<EntryOutputTemplate[]>(
+    sourceReviewOnly ? null : '/accounting/entry-output-templates',
+  );
   const diagnosticsRef = useRef<HTMLDivElement>(null);
   const flowHeaderRef = useRef<HTMLDivElement>(null);
   const documentRef = useRef<HTMLElement>(null);
@@ -125,29 +133,46 @@ export function StatementWorkspace({
     (extract) => extract.id === selectedExtractId,
   );
   const [preview, setPreview] = useState<ExportPreview | null>(initialPreview ?? null);
-  const [flowStage, setFlowStage] = useState<3 | 4>(3);
+  const [flowStage, setFlowStage] = useState<3 | 4 | 5>(3);
   const router = useRouter();
-  const [showPdfTools, setShowPdfTools] = useState(true);
+  const compactReview = useSyncExternalStore(
+    subscribeToReviewViewport,
+    () => window.matchMedia(compactReviewQuery).matches,
+    () => false,
+  );
+  const [pdfPreference, setShowPdfTools] = useState<boolean | null>(null);
+  const showPdfTools = pdfPreference ?? !compactReview;
   const [editedExportText, setEditedExportText] = useState<string | null>(null);
   const [exportTextSaved, setExportTextSaved] = useState(false);
   const [exportView, setExportView] = useState<'table' | 'text'>('table');
   const textEdited = editedExportText !== null && editedExportText !== preview?.text;
-  useUnsavedChanges(dirty || pendingCells.size > 0 || (textEdited && !exportTextSaved));
   const [templateEditor, setTemplateEditor] = useState<{
     initial: ExportTemplate | null;
     duplicate?: boolean;
   } | null>(null);
   const [transactionPage, setTransactionPage] = useState(1);
-  const [movementFilter, setMovementFilter] = useState(
-    extractMode ? (activeExtract?.filterText ?? '') : '',
+  const [filterSet, setFilterSet] = useState<{
+    templateId: string;
+    schema: string;
+    filters: ExportColumnFilter[];
+  }>({
+    templateId,
+    schema: JSON.stringify(templates.find((item) => item.id === templateId)),
+    filters: activeExtract?.templateId === templateId ? (activeExtract.columnFilters ?? []) : [],
+  });
+  const columnFilters =
+    filterSet.templateId === templateId &&
+    (filterSet.schema === undefined ||
+      filterSet.schema === JSON.stringify(templates.find((item) => item.id === templateId)))
+      ? filterSet.filters
+      : [];
+  const savedFilters =
+    activeExtract?.templateId === templateId ? (activeExtract.columnFilters ?? []) : [];
+  const extractFilterDirty = JSON.stringify(columnFilters) !== JSON.stringify(savedFilters);
+  const [sourceEditor, setSourceEditor] = useState(false);
+  useUnsavedChanges(
+    dirty || extractFilterDirty || pendingCells.size > 0 || (textEdited && !exportTextSaved),
   );
-  const [movementExclusion, setMovementExclusion] = useState(
-    extractMode ? (activeExtract?.excludeText ?? '') : '',
-  );
-  const extractFilterDirty =
-    extractMode &&
-    (movementFilter.trim() !== (activeExtract?.filterText ?? '') ||
-      movementExclusion.trim() !== (activeExtract?.excludeText ?? ''));
   const [previewPage, setPreviewPage] = useState(1);
   const [tab, setTab] = useState<'transactions' | 'preview' | 'history'>(
     initialTab ?? (guided ? 'preview' : 'transactions'),
@@ -168,7 +193,9 @@ export function StatementWorkspace({
   useEffect(() => {
     if (
       (!guided && initialTab !== 'preview') ||
-      (initialPreview && (!extractMode || initialPreview.extractId === activeExtract?.id)) ||
+      (initialPreview &&
+        initialPreview.template.id === templateId &&
+        (initialPreview.extractId || undefined) === activeExtract?.id) ||
       !templateId
     )
       return;
@@ -177,7 +204,7 @@ export function StatementWorkspace({
       method: 'POST',
       body: JSON.stringify({
         statementVersion: detail.version,
-        ...(extractMode ? { extractId: activeExtract?.id } : {}),
+        extractId: activeExtract?.id,
       }),
       signal: controller.signal,
     })
@@ -207,12 +234,13 @@ export function StatementWorkspace({
     () => false,
   );
   const model = templates.find((t) => t.id === templateId);
+  const accountingFlow = guided && !!model && isAccountingTemplate(model.type);
   const extractMovementIds = new Set(activeExtract?.transactions.map((row) => row.id) ?? []);
   const previewRows = preview
     ? statementPreviewRows(
         preview,
-        extractMode && activeExtract ? activeExtract.transactions : detail.statement.transactions,
-        extractMode && activeExtract
+        activeExtract ? activeExtract.transactions : detail.statement.transactions,
+        activeExtract
           ? draft.transactions.filter((row) => extractMovementIds.has(row.id))
           : draft.transactions,
       )
@@ -231,7 +259,7 @@ export function StatementWorkspace({
   function correct(sequence: number) {
     const row = draft.transactions.find((t) => t.sequence === sequence);
     if (row) {
-      setMovementFilter('');
+      setSourceEditor(true);
       setTab('transactions');
       setTransactionPage(Math.floor(draft.transactions.indexOf(row) / 50) + 1);
       setFocusRow(row.id);
@@ -464,14 +492,21 @@ export function StatementWorkspace({
     setError('');
     setActionErrors([]);
     try {
-      if (extractMode && activeExtract) {
+      if (activeExtract) {
         await request(`/statement-imports/${detail.id}/extracts`, {
           method: 'POST',
           body: JSON.stringify({
             statementVersion: detail.version,
             statement: draft,
-            filterText: movementFilter,
-            excludeText: movementExclusion,
+            filterText: activeExtract.filterText,
+            excludeText: activeExtract.excludeText,
+            ...(activeExtract.columnFilters
+              ? {
+                  templateId: activeExtract.templateId,
+                  columnFilters: activeExtract.columnFilters,
+                  templateFingerprint: activeExtract.templateFingerprint,
+                }
+              : {}),
           }),
         });
       } else
@@ -536,7 +571,7 @@ export function StatementWorkspace({
           method: 'POST',
           body: JSON.stringify({
             statementVersion: detail.version,
-            ...(extractMode ? { extractId: activeExtract?.id } : {}),
+            extractId: activeExtract?.id,
           }),
         },
       );
@@ -548,27 +583,6 @@ export function StatementWorkspace({
       failed(e);
     } finally {
       setBusy(null);
-    }
-  }
-  async function downloadStructured(report = false) {
-    if (dirty || pendingCells.size > 0 || busy) return;
-    if (extractFilterDirty) {
-      setError('Enregistrez l’extrait avant de télécharger son PDF ou son rapport.');
-      return;
-    }
-    setBusy('structured-download');
-    try {
-      const blob = await documentBlob(
-        `/statement-imports/${detail.id}/${report ? 'conversion-report' : 'normalized-pdf'}?version=${detail.version}${extractMode && activeExtract ? '&extractId=' + activeExtract.id : ''}`,
-      );
-      saveBlob(
-        blob,
-        `${extractMode ? 'extrait' : 'releve'}-${report ? 'controles.json' : 'structure.pdf'}`,
-      );
-    } catch (error) {
-      setError((error as Error).message);
-    } finally {
-      setBusy('');
     }
   }
   async function download() {
@@ -597,7 +611,7 @@ export function StatementWorkspace({
           method: 'POST',
           body: JSON.stringify({
             statementVersion: checkedVersion,
-            ...(extractMode ? { extractId: activeExtract?.id } : {}),
+            extractId: activeExtract?.id,
           }),
         },
       );
@@ -616,7 +630,7 @@ export function StatementWorkspace({
       let actualEncoding = model.encoding;
       const name = await downloadExport(detail.id, model.id, current, {
         destination: downloadName.trim() || destination.handle ? destination : undefined,
-        allowErrors: true,
+        allowErrors: false,
         editedText: textEdited ? editedExportText : null,
         onEncoding: (encoding) => {
           actualEncoding = encoding;
@@ -697,7 +711,7 @@ export function StatementWorkspace({
       </label>
     );
   }
-  const filteredRows = filterStatementRows(draft.transactions, movementFilter, movementExclusion);
+  const filteredRows = draft.transactions;
   const movementPage = Math.min(transactionPage, Math.max(1, Math.ceil(filteredRows.length / 50)));
   const visibleRows = filteredRows.slice((movementPage - 1) * 50, movementPage * 50);
   const errors = actionErrors.length ? actionErrors : (preview?.errors ?? detail.errors);
@@ -717,19 +731,32 @@ export function StatementWorkspace({
   }
   return (
     <div
-      className={`conversion-workspace ${extractMode ? 'is-extract-mode' : ''} ${detail.sourceFileName ? 'has-pdf-panel' : ''} ${guided ? `conversion-guided stage-${flowStage}` : ''}`}
+      className={`conversion-workspace statement-workspace ${sourceReviewOnly ? 'is-source-review' : ''} ${extractMode ? 'is-extract-mode' : ''} ${detail.sourceFileName && !sourceReviewOnly ? 'has-pdf-panel' : ''} ${guided ? `conversion-guided stage-${flowStage}` : ''}`}
     >
       {guided && (
         <div ref={flowHeaderRef} className="conversion-flow-header">
           <ConversionSteps
-            current={flowStage}
+            current={flowStage === 5 ? 3 : flowStage}
+            accountingMode={accountingFlow}
+            extractMode={extractMode}
             disabled={!!busy || pendingCells.size > 0}
             onNavigate={(step) => {
               if (step === 1) onImport?.();
               else if (step === 2) onChooseTemplate?.();
-              else if (step === 3) setFlowStage(3);
+              else setFlowStage(3);
             }}
           />
+          {flowStage === 3 && (
+            <div className="conversion-result-continue">
+              <p className="muted text-sm">Vérifiez le résultat avant de continuer.</p>
+              <Button
+                disabled={!!busy || dirty || pendingCells.size > 0 || !model?.isActive}
+                onClick={() => setFlowStage(accountingFlow ? 5 : 4)}
+              >
+                {accountingFlow ? 'Paramétrer le résultat' : 'Continuer vers le téléchargement'}
+              </Button>
+            </div>
+          )}
           {flowStage === 4 && error && (
             <p role="alert" className="conversion-alert error">
               {error}
@@ -800,207 +827,192 @@ export function StatementWorkspace({
         </BankDialog>
       )}
       <div
-        className={`conversion-review-layout ${detail.sourceFileName && showPdfTools ? 'has-pdf-panel' : 'pdf-panel-hidden'}`}
+        className={`conversion-review-layout ${detail.sourceFileName && showPdfTools && !sourceReviewOnly ? 'has-pdf-panel' : 'pdf-panel-hidden'}`}
       >
         <div className="conversion-main">
-          <section ref={documentRef} className="conversion-document-card">
-            <details open={!guided || editing}>
-              <summary className="guided-document-summary" hidden={!guided}>
-                {draft.bankName} · Informations du relevé
-              </summary>
-              <div className="conversion-document-heading">
-                <span className="conversion-bank-icon">
-                  <FileOutput size={24} />
-                </span>
-                <div>
-                  <p className="conversion-eyebrow">
-                    {extractMode ? 'EXTRAIT DE RELEVÉ BANCAIRE' : 'RELEVÉ NORMALISÉ'}
-                  </p>
-                  <h2>{draft.bankName}</h2>
-                  <p>
-                    {draft.statementNumber || 'Sans numéro de relevé'}
-                    <span>·</span>
-                    {accountSuffix(draft.accountNumber)}
-                  </p>
-                </div>
-                <span className={`conversion-status ${validated ? 'validated' : 'review'}`}>
-                  {validated ? <CheckCircle2 size={14} /> : <Pencil size={14} />}{' '}
-                  {validated ? 'Validé' : dirty ? 'Modifications en cours' : 'À vérifier'}
-                </span>
-              </div>
-              <div className="conversion-summary">
-                <div>
-                  <span>Période</span>
-                  <strong>
-                    {date(draft.periodStart)} — {date(draft.periodEnd)}
-                  </strong>
-                </div>
-                <div>
-                  <span>Mouvements</span>
-                  <strong>{draft.transactions.length}</strong>
-                </div>
-                <div>
-                  <span>Devise</span>
-                  <strong>{draft.currency || '—'}</strong>
-                </div>
-                <div>
-                  <span>Version</span>
-                  <strong>{detail.version}</strong>
-                </div>
-              </div>
-              <div className="conversion-balances">
-                <div data-direction={Number(draft.openingBalance) < 0 ? 'debit' : 'credit'}>
-                  <span>Solde initial</span>
-                  <strong>
-                    {money(absoluteBalance(draft.openingBalance))}{' '}
-                    <small>
-                      {draft.currency} · {balanceDirection(draft.openingBalance)}
-                    </small>
-                  </strong>
-                </div>
-                <span className="conversion-balance-connector" aria-hidden="true">
-                  →
-                </span>
-                <div data-direction={Number(draft.closingBalance) < 0 ? 'debit' : 'credit'}>
-                  <span>Solde final</span>
-                  <strong>
-                    {money(absoluteBalance(draft.closingBalance))}{' '}
-                    <small>
-                      {draft.currency} · {balanceDirection(draft.closingBalance)}
-                    </small>
-                  </strong>
-                </div>
-              </div>
-              <div className="conversion-document-actions">
-                <p className="muted text-xs">
-                  Informations remplies automatiquement depuis le PDF ; vous pouvez les corriger.
-                  Les totaux peuvent être calculés à partir des mouvements et le numéro généré selon
-                  la période.
+          <section
+            ref={documentRef}
+            className="statement-review-card"
+            aria-label="Informations du document"
+          >
+            <div className="conversion-document-heading">
+              <span className="conversion-bank-icon">
+                <FileOutput size={24} />
+              </span>
+              <div>
+                <p className="conversion-eyebrow">
+                  {extractMode ? 'EXTRAIT BANCAIRE' : 'RELEVÉ BANCAIRE'}
                 </p>
-                {detail.extraction && (
-                  <Button
-                    permission="documents.write"
-                    variant="outline"
-                    size="sm"
-                    disabled={!!busy || dirty}
-                    onClick={() => void completeMetadata()}
-                  >
-                    <WandSparkles size={14} />
-                    {busy === 'metadata'
-                      ? 'Lecture des informations…'
-                      : 'Compléter les champs vides'}
-                  </Button>
-                )}
-                {detail.sourceFileName && (
-                  <Button asChild variant="outline" size="sm">
-                    <a
-                      href={`${API_URL}/statement-imports/${detail.id}/original`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Eye size={14} /> Voir le PDF original
-                    </a>
-                  </Button>
-                )}
+                <h2>{draft.bankName}</h2>
+                <p>
+                  {draft.statementNumber || 'Sans numéro de relevé'}
+                  <span>·</span>
+                  {accountSuffix(draft.accountNumber)}
+                </p>
+              </div>
+              <span className={`conversion-status ${validated ? 'validated' : 'review'}`}>
+                {validated ? <CheckCircle2 size={14} /> : <Pencil size={14} />}{' '}
+                {validated ? 'Validé' : dirty ? 'Modifications en cours' : 'À vérifier'}
+              </span>
+            </div>
+            <div className="statement-metrics">
+              <div>
+                <span>Période</span>
+                <strong>
+                  {date(draft.periodStart)} — {date(draft.periodEnd)}
+                </strong>
+              </div>
+              <div>
+                <span>Mouvements</span>
+                <strong>{draft.transactions.length}</strong>
+              </div>
+              <div>
+                <span>Devise</span>
+                <strong>{draft.currency || '—'}</strong>
+              </div>
+              <div>
+                <span>Version</span>
+                <strong>{detail.version}</strong>
+              </div>
+            </div>
+            <div className="statement-balances">
+              <div data-direction={Number(draft.openingBalance) < 0 ? 'debit' : 'credit'}>
+                <span>Solde initial</span>
+                <strong>
+                  {money(absoluteBalance(draft.openingBalance))}{' '}
+                  <small>
+                    {draft.currency} · {balanceDirection(draft.openingBalance)}
+                  </small>
+                </strong>
+              </div>
+              <div data-direction={Number(draft.closingBalance) < 0 ? 'debit' : 'credit'}>
+                <span>Solde final</span>
+                <strong>
+                  {money(absoluteBalance(draft.closingBalance))}{' '}
+                  <small>
+                    {draft.currency} · {balanceDirection(draft.closingBalance)}
+                  </small>
+                </strong>
+              </div>
+            </div>
+            <div className="statement-document-actions">
+              {detail.extraction && (
                 <Button
                   permission="documents.write"
                   variant="outline"
                   size="sm"
-                  disabled={!!busy || pendingCells.size > 0}
-                  onClick={() => setEditing(!editing)}
+                  disabled={!!busy || dirty}
+                  onClick={() => void completeMetadata()}
                 >
-                  <Pencil size={14} />
-                  {editing ? 'Masquer les réglages' : 'Corriger les informations'}
+                  <WandSparkles size={14} />
+                  {busy === 'metadata' ? 'Lecture des informations…' : 'Compléter les champs'}
                 </Button>
-              </div>
-              <div className="px-5 pb-5">
-                <StatementAssociation
-                  detail={detail}
-                  onSaved={onSaved}
-                  disabled={dirty || !!busy || (textEdited && !exportTextSaved)}
-                />
-              </div>
-              {editing && (
-                <form
-                  className="conversion-metadata"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void save();
-                  }}
-                >
-                  <fieldset disabled={!!busy || pendingCells.size > 0}>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {metadata('bankName', 'Banque')}
-                      {metadata('bankCode', 'Code banque')}
-                      {metadata('statementNumber', 'Numéro du relevé')}
-                      {metadata('currency', 'Devise')}
-                      {metadata('periodStart', 'Début de période', 'date')}
-                      {metadata('periodEnd', 'Fin de période', 'date')}
-                      {balance('openingBalance', 'Solde initial')}
-                      {balance('closingBalance', 'Solde final')}
-                      {balance('totalDebit', 'Total débit')}
-                      {balance('totalCredit', 'Total crédit')}
-                      <label className="sm:col-span-2">
-                        Convention des soldes
-                        <select
-                          aria-label="Convention des soldes"
-                          className="ui-input mt-2"
-                          value={draft.balanceConvention || ''}
-                          onChange={(e) => update('balanceConvention', e.target.value || null)}
-                        >
-                          <option value="">Non renseignée</option>
-                          <option value="CREDIT_INCREASES">Les crédits augmentent le solde</option>
-                          <option value="DEBIT_INCREASES">Les débits augmentent le solde</option>
-                        </select>
-                      </label>
-                    </div>
-                    <details className="conversion-details mt-4">
-                      <summary>Dates et libellés des soldes · Sage X3</summary>
-                      <p className="muted text-xs mt-2">
-                        Vérifiez les dates dans le PDF. Si elles sont vides, les dates de début et
-                        de fin de période sont utilisées. La date de valeur reprend la date du solde
-                        lorsqu’elle est absente. Les libellés restent conservés ici. Par défaut,
-                        leur colonne est retirée des lignes de solde Sage X3 ; ce comportement se
-                        règle dans le modèle.
-                      </p>
-                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                        {metadata('openingBalanceDate', 'Date du solde initial', 'date')}
-                        {metadata(
-                          'openingBalanceValueDate',
-                          'Date valeur du solde initial',
-                          'date',
-                        )}
-                        {metadata('openingBalanceDescription', 'Libellé du solde initial')}
-                        {metadata('closingBalanceDate', 'Date du solde final', 'date')}
-                        {metadata('closingBalanceValueDate', 'Date valeur du solde final', 'date')}
-                        {metadata('closingBalanceDescription', 'Libellé du solde final')}
-                      </div>
-                    </details>
-                    <details className="conversion-details mt-4">
-                      <summary>Sources complémentaires du relevé</summary>
-                      <p className="muted text-xs mt-2">
-                        Renseignez des valeurs explicites. Elles sont utilisées uniquement lorsque
-                        la transaction ne fournit pas sa propre valeur.
-                      </p>
-                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                        {metadata('journal', 'Journal')}
-                        {metadata('account', 'Compte comptable')}
-                        {metadata('analytic', 'Analytique')}
-                        {metadata('recordType', 'Type de ligne')}
-                      </div>
-                    </details>
-                    <Button
-                      className="mt-4"
-                      type="submit"
-                      disabled={!dirty || !!busy || pendingCells.size > 0}
-                    >
-                      <Save size={15} />
-                      Enregistrer les corrections
-                    </Button>
-                  </fieldset>
-                </form>
               )}
-            </details>
+              {detail.sourceFileName && (
+                <Button asChild variant="outline" size="sm">
+                  <a
+                    href={`${API_URL}/statement-imports/${detail.id}/original`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ArrowUpRight size={14} /> Ouvrir l’original
+                  </a>
+                </Button>
+              )}
+              <Button
+                permission="documents.write"
+                variant="outline"
+                size="sm"
+                disabled={!!busy || pendingCells.size > 0}
+                onClick={() => setEditing(!editing)}
+              >
+                <Pencil size={14} />
+                {editing ? 'Fermer les réglages' : 'Modifier les informations'}
+              </Button>
+            </div>
+            <div className="statement-association">
+              <StatementAssociation
+                detail={detail}
+                onSaved={onSaved}
+                disabled={dirty || !!busy || (textEdited && !exportTextSaved)}
+              />
+            </div>
+            {editing && (
+              <form
+                className="conversion-metadata"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void save();
+                }}
+              >
+                <fieldset disabled={!!busy || pendingCells.size > 0}>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {metadata('bankName', 'Banque')}
+                    {metadata('bankCode', 'Code banque')}
+                    {metadata('statementNumber', 'Numéro du relevé')}
+                    {metadata('currency', 'Devise')}
+                    {metadata('periodStart', 'Début de période', 'date')}
+                    {metadata('periodEnd', 'Fin de période', 'date')}
+                    {balance('openingBalance', 'Solde initial')}
+                    {balance('closingBalance', 'Solde final')}
+                    {balance('totalDebit', 'Total débit')}
+                    {balance('totalCredit', 'Total crédit')}
+                    <label className="sm:col-span-2">
+                      Convention des soldes
+                      <select
+                        aria-label="Convention des soldes"
+                        className="ui-input mt-2"
+                        value={draft.balanceConvention || ''}
+                        onChange={(e) => update('balanceConvention', e.target.value || null)}
+                      >
+                        <option value="">Non renseignée</option>
+                        <option value="CREDIT_INCREASES">Les crédits augmentent le solde</option>
+                        <option value="DEBIT_INCREASES">Les débits augmentent le solde</option>
+                      </select>
+                    </label>
+                  </div>
+                  <details className="conversion-details mt-4">
+                    <summary>Dates et libellés des soldes · Sage X3</summary>
+                    <p className="muted text-xs mt-2">
+                      Vérifiez les dates dans le PDF. Si elles sont vides, les dates de début et de
+                      fin de période sont utilisées. La date de valeur reprend la date du solde
+                      lorsqu’elle est absente. Les libellés restent conservés ici. Par défaut, leur
+                      colonne est retirée des lignes de solde Sage X3 ; ce comportement se règle
+                      dans le modèle.
+                    </p>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      {metadata('openingBalanceDate', 'Date du solde initial', 'date')}
+                      {metadata('openingBalanceValueDate', 'Date valeur du solde initial', 'date')}
+                      {metadata('openingBalanceDescription', 'Libellé du solde initial')}
+                      {metadata('closingBalanceDate', 'Date du solde final', 'date')}
+                      {metadata('closingBalanceValueDate', 'Date valeur du solde final', 'date')}
+                      {metadata('closingBalanceDescription', 'Libellé du solde final')}
+                    </div>
+                  </details>
+                  <details className="conversion-details mt-4">
+                    <summary>Sources complémentaires du relevé</summary>
+                    <p className="muted text-xs mt-2">
+                      Renseignez des valeurs explicites. Elles sont utilisées uniquement lorsque la
+                      transaction ne fournit pas sa propre valeur.
+                    </p>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      {metadata('journal', 'Journal')}
+                      {metadata('account', 'Compte comptable')}
+                      {metadata('analytic', 'Analytique')}
+                      {metadata('recordType', 'Type de ligne')}
+                    </div>
+                  </details>
+                  <Button
+                    className="mt-4"
+                    type="submit"
+                    disabled={!dirty || !!busy || pendingCells.size > 0}
+                  >
+                    <Save size={15} />
+                    Enregistrer les corrections
+                  </Button>
+                </fieldset>
+              </form>
+            )}
           </section>
           {error && (
             <div role="alert" className="conversion-alert error">
@@ -1043,6 +1055,12 @@ export function StatementWorkspace({
               onStatement={can('documents.write') ? correctStatement : undefined}
             />
           </div>
+          <StatementReadingComparison
+            detail={detail}
+            disabled={!!busy || dirty || pendingCells.size > 0}
+            onSaved={onSaved}
+            onBusy={(value) => setBusy(value ? 'reading-review' : null)}
+          />
           {needsAdaptation && detail.extraction && (
             <div className="conversion-alert warning">
               <div>
@@ -1055,7 +1073,7 @@ export function StatementWorkspace({
             </div>
           )}
           <section className="conversion-data-card">
-            {extractMode && tab === 'preview' && (
+            {tab === 'preview' && (activeExtract || extractFilterDirty) && (
               <div className="statement-extract-panel">
                 <strong>
                   {activeExtract
@@ -1095,49 +1113,51 @@ export function StatementWorkspace({
             <div className="conversion-tabs" role="tablist" aria-label="Données et export">
               {(
                 [
-                  ['transactions', 'Mouvements', CheckCheck],
+                  ['transactions', 'Mouvements & filtres', CheckCheck],
                   ['preview', 'Aperçu du fichier', Eye],
                   ['history', 'Historique', History],
                 ] as const
-              ).map(([value, label, Icon]) => (
-                <button
-                  key={value}
-                  role="tab"
-                  tabIndex={tab === value ? 0 : -1}
-                  aria-selected={tab === value}
-                  aria-controls={`conversion-panel-${value}`}
-                  id={`conversion-tab-${value}`}
-                  disabled={pendingCells.size > 0}
-                  onClick={() => setTab(value)}
-                  onKeyDown={(event) => {
-                    const tabs = Array.from(
-                      event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>(
-                        '[role="tab"]',
-                      ),
-                    );
-                    const index = tabs.indexOf(event.currentTarget);
-                    const target =
-                      event.key === 'ArrowRight'
-                        ? (index + 1) % tabs.length
-                        : event.key === 'ArrowLeft'
-                          ? (index + tabs.length - 1) % tabs.length
-                          : event.key === 'Home'
-                            ? 0
-                            : event.key === 'End'
-                              ? tabs.length - 1
-                              : null;
-                    if (target !== null) {
-                      event.preventDefault();
-                      tabs[target].click();
-                      tabs[target].focus();
-                    }
-                  }}
-                >
-                  <Icon size={16} />
-                  {label}
-                  {value === 'transactions' && <span>{draft.transactions.length}</span>}
-                </button>
-              ))}
+              )
+                .filter(([value]) => !sourceReviewOnly || value !== 'preview')
+                .map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    role="tab"
+                    tabIndex={tab === value ? 0 : -1}
+                    aria-selected={tab === value}
+                    aria-controls={`conversion-panel-${value}`}
+                    id={`conversion-tab-${value}`}
+                    disabled={pendingCells.size > 0}
+                    onClick={() => setTab(value)}
+                    onKeyDown={(event) => {
+                      const tabs = Array.from(
+                        event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>(
+                          '[role="tab"]',
+                        ),
+                      );
+                      const index = tabs.indexOf(event.currentTarget);
+                      const target =
+                        event.key === 'ArrowRight'
+                          ? (index + 1) % tabs.length
+                          : event.key === 'ArrowLeft'
+                            ? (index + tabs.length - 1) % tabs.length
+                            : event.key === 'Home'
+                              ? 0
+                              : event.key === 'End'
+                                ? tabs.length - 1
+                                : null;
+                      if (target !== null) {
+                        event.preventDefault();
+                        tabs[target].click();
+                        tabs[target].focus();
+                      }
+                    }}
+                  >
+                    <Icon size={16} />
+                    {label}
+                    {value === 'transactions' && <span>{draft.transactions.length}</span>}
+                  </button>
+                ))}
             </div>
             {tab === 'transactions' && (
               <div
@@ -1152,359 +1172,362 @@ export function StatementWorkspace({
                     </h3>
                     <p>
                       {extractMode
-                        ? 'Filtrez les libellés par texte, puis enregistrez les lignes retenues et leurs calculs.'
-                        : 'Vérifiez les dates, montants et sens avant validation.'}
+                        ? 'Filtrez les colonnes du modèle, puis enregistrez la sélection à exporter.'
+                        : 'Vérifiez vos données et sélectionnez les mouvements avec les colonnes du modèle.'}
                     </p>
                   </div>
-                  <span>
-                    {Math.min((movementPage - 1) * 50 + 1, filteredRows.length)}–
-                    {Math.min(movementPage * 50, filteredRows.length)} / {filteredRows.length}
-                  </span>
+                  <span>{draft.transactions.length} mouvements source</span>
                 </div>
                 <StatementExtractPanel
+                  key={`${templateId}:${JSON.stringify(model?.fields)}`}
                   detail={detail}
-                  rows={filteredRows}
-                  filter={movementFilter}
-                  onBusy={(value) => setBusy(value ? 'extract' : null)}
-                  excludeText={movementExclusion}
-                  onExclusion={(text) => {
-                    if (extractMode && textEdited && !exportTextSaved && !confirmDiscard(true))
-                      return;
-                    setMovementExclusion(text);
-                    setTransactionPage(1);
-                    setSelectedRows(new Set());
-                    if (extractMode) {
-                      setPreview(null);
-                      setEditedExportText(null);
-                    }
+                  model={model}
+                  filters={columnFilters}
+                  onFilters={(filters) => {
+                    if (textEdited && !exportTextSaved && !confirmDiscard(true)) return;
+                    setFilterSet({ templateId, schema: JSON.stringify(model), filters });
                   }}
                   selectedExtractId={selectedExtractId}
                   onSelected={(extract) => {
                     if (textEdited && !exportTextSaved && !confirmDiscard(true)) return;
-                    setSelectedExtractId(extract.id);
-                    setMovementFilter(extract.filterText);
-                    setMovementExclusion(extract.excludeText ?? '');
+                    setSelectedExtractId(extract?.id ?? '');
                     setPreview(null);
                     setEditedExportText(null);
                     setExportTextSaved(false);
-                    if (extractMode) {
-                      const params = new URLSearchParams(window.location.search);
-                      params.set('extractId', extract.id);
-                      router.replace(`/conversions?${params}`, { scroll: false });
-                    }
-                  }}
-                  onFilter={(text) => {
-                    if (extractMode && textEdited && !exportTextSaved && !confirmDiscard(true))
-                      return;
-                    setMovementFilter(text);
-                    setTransactionPage(1);
-                    setSelectedRows(new Set());
-                    if (extractMode) {
-                      setPreview(null);
-                      setEditedExportText(null);
-                    }
+                    setFilterSet({
+                      templateId,
+                      schema: JSON.stringify(model),
+                      filters:
+                        extract?.templateId === templateId ? (extract.columnFilters ?? []) : [],
+                    });
+                    const params = new URLSearchParams(window.location.search);
+                    if (extract) params.set('extractId', extract.id);
+                    else params.delete('extractId');
+                    router.replace(`/conversions?${params}`, { scroll: false });
                   }}
                   disabled={!!busy || pendingCells.size > 0}
                   dirty={dirty}
-                  onSaved={(reset) => onSaved(reset || !extractMode ? 'transactions' : 'preview')}
+                  onBusy={(value) => setBusy(value ? 'extract' : null)}
+                  onSaved={() => onSaved('preview')}
                 />
-                {can('documents.write') && (
-                  <div className="row-editor-toolbar" aria-label="Modification des lignes">
-                    <div className="row-editor-actions">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!!busy || pendingCells.size > 0}
-                        onClick={() => insertRow(draft.transactions.length + 1)}
-                      >
-                        <Plus size={15} />
-                        Ajouter une ligne
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!!busy || pendingCells.size > 0 || !draft.transactions.length}
-                        onClick={() => setColumnEditor(true)}
-                      >
-                        <Columns3 size={15} />
-                        Modifier une colonne
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!!busy || pendingCells.size > 0}
-                        aria-pressed={extraColumns}
-                        onClick={() => setExtraColumns(!extraColumns)}
-                      >
-                        {extraColumns
-                          ? 'Masquer les champs complémentaires'
-                          : 'Champs complémentaires'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!!busy || pendingCells.size > 0 || !rowHistory.length}
-                        onClick={undoRows}
-                      >
-                        <Undo2 size={15} />
-                        Annuler la dernière action
-                      </Button>
-                    </div>
-                    {insertionToolbar()}
-                    {!!selectedRows.size && (
-                      <div className="row-selection-bar">
-                        <span>{selectedRows.size} ligne(s) sélectionnée(s), toutes les pages</span>
+                <div className="source-editor-toggle">
+                  <div>
+                    <strong>Données source</strong>
+                    <p>Corrigez les dates, libellés et montants avant le filtrage.</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-expanded={sourceEditor}
+                    aria-controls="statement-source-editor"
+                    onClick={() => setSourceEditor(!sourceEditor)}
+                  >
+                    <Pencil size={14} />
+                    {sourceEditor ? 'Masquer les corrections' : 'Corriger les données'}
+                  </Button>
+                </div>
+                <div id="statement-source-editor" hidden={!sourceEditor}>
+                  {can('documents.write') && (
+                    <div className="row-editor-toolbar" aria-label="Modification des lignes">
+                      <div className="row-editor-actions">
                         <Button
-                          variant="danger"
+                          variant="outline"
                           size="sm"
                           disabled={!!busy || pendingCells.size > 0}
-                          onClick={() => setDeletingRows(new Set(selectedRows))}
+                          onClick={() => insertRow(draft.transactions.length + 1)}
                         >
-                          <Trash2 size={15} />
-                          Supprimer la sélection
+                          <Plus size={15} />
+                          Ajouter une ligne
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="outline"
+                          size="sm"
+                          disabled={!!busy || pendingCells.size > 0 || !draft.transactions.length}
+                          onClick={() => setColumnEditor(true)}
+                        >
+                          <Columns3 size={15} />
+                          Modifier une colonne
+                        </Button>
+                        <Button
+                          variant="outline"
                           size="sm"
                           disabled={!!busy || pendingCells.size > 0}
-                          onClick={() => setSelectedRows(new Set())}
+                          aria-pressed={extraColumns}
+                          onClick={() => setExtraColumns(!extraColumns)}
                         >
-                          Désélectionner
+                          {extraColumns
+                            ? 'Masquer les champs complémentaires'
+                            : 'Champs complémentaires'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!!busy || pendingCells.size > 0 || !rowHistory.length}
+                          onClick={undoRows}
+                        >
+                          <Undo2 size={15} />
+                          Annuler la dernière action
                         </Button>
                       </div>
-                    )}
-                    <p>
-                      Cliquez sur une cellule pour la corriger. Glissez une ligne avec sa poignée ou
-                      changez sa position. Le bouton + insère une ligne avant celle choisie. Entrée
-                      applique la saisie, Échap l’annule. Enregistrez ensuite les corrections.
-                    </p>
-                  </div>
-                )}
-                <div
-                  className="conversion-table-scroll"
-                  tabIndex={0}
-                  aria-label="Tableau des mouvements"
-                >
-                  <table
-                    className="conversion-table movements-table"
-                    data-extra-columns={extraColumns || undefined}
+                      {insertionToolbar()}
+                      {!!selectedRows.size && (
+                        <div className="row-selection-bar">
+                          <span>
+                            {selectedRows.size} ligne(s) sélectionnée(s), toutes les pages
+                          </span>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            disabled={!!busy || pendingCells.size > 0}
+                            onClick={() => setDeletingRows(new Set(selectedRows))}
+                          >
+                            <Trash2 size={15} />
+                            Supprimer la sélection
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={!!busy || pendingCells.size > 0}
+                            onClick={() => setSelectedRows(new Set())}
+                          >
+                            Désélectionner
+                          </Button>
+                        </div>
+                      )}
+                      <p>
+                        Cliquez sur une cellule pour la corriger. Glissez une ligne avec sa poignée
+                        ou changez sa position. Le bouton + insère une ligne avant celle choisie.
+                        Entrée applique la saisie, Échap l’annule. Enregistrez ensuite les
+                        corrections.
+                      </p>
+                    </div>
+                  )}
+                  <div
+                    className="conversion-table-scroll"
+                    tabIndex={0}
+                    aria-label="Tableau des mouvements"
                   >
-                    <colgroup>
-                      {can('documents.write') && <col style={{ width: 42 }} />}
-                      <col style={{ width: 190 }} />
-                      <col style={{ width: 126 }} />
-                      <col style={{ width: 126 }} />
-                      <col className="movement-description-column" />
-                      <col style={{ width: 120 }} />
-                      <col style={{ width: 120 }} />
-                      <col style={{ width: 88 }} />
-                      <col style={{ width: 120 }} />
-                      {extraColumns &&
-                        Array.from({ length: 6 }, (_, index) => (
-                          <col key={index} style={{ width: 130 }} />
-                        ))}
-                      <col style={{ width: 108 }} />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        {can('documents.write') && (
-                          <th className="row-selection-cell">
-                            <input
-                              type="checkbox"
-                              aria-label="Sélectionner toutes les lignes"
-                              title="Sélectionner les mouvements correspondant au filtre, toutes les pages"
-                              disabled={!!busy || pendingCells.size > 0 || !filteredRows.length}
-                              checked={
-                                filteredRows.length > 0 &&
-                                filteredRows.every((row) => selectedRows.has(row.sequence))
-                              }
-                              onChange={(event) =>
-                                setSelectedRows(
-                                  event.target.checked
-                                    ? new Set(filteredRows.map((row) => row.sequence))
-                                    : new Set(),
-                                )
-                              }
-                            />
-                          </th>
-                        )}
-                        <th>N° / ordre</th>
-                        <th>Date</th>
-                        <th>Date valeur</th>
-                        <th>Libellé</th>
-                        <th className="conversion-money">Débit</th>
-                        <th className="conversion-money">Crédit</th>
-                        <th>Sens</th>
-                        <th className="conversion-money">Solde</th>
+                    <table
+                      className="conversion-table movements-table"
+                      data-extra-columns={extraColumns || undefined}
+                    >
+                      <colgroup>
+                        {can('documents.write') && <col style={{ width: 42 }} />}
+                        <col style={{ width: 190 }} />
+                        <col style={{ width: 126 }} />
+                        <col style={{ width: 126 }} />
+                        <col className="movement-description-column" />
+                        <col style={{ width: 120 }} />
+                        <col style={{ width: 120 }} />
+                        <col style={{ width: 88 }} />
+                        <col style={{ width: 120 }} />
                         {extraColumns &&
-                          [
-                            'Montant',
-                            'Devise',
-                            'Journal',
-                            'Compte comptable',
-                            'Analytique',
-                            'Type de ligne',
-                          ].map((label) => <th key={label}>{label}</th>)}
-                        <th>
-                          <span className="sr-only">Correction</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visibleRows.map((row) => (
-                        <tr
-                          key={row.id || `sequence-${row.sequence}`}
-                          data-movement-id={row.id}
-                          data-drop-target={dropRow === row.id || undefined}
-                          {...rowDropEvents(row)}
-                          data-selected={selectedRows.has(row.sequence) || undefined}
-                          className={
-                            errors.some((e) => e.transactionSequence === row.sequence)
-                              ? 'has-error'
-                              : ''
-                          }
-                        >
+                          Array.from({ length: 6 }, (_, index) => (
+                            <col key={index} style={{ width: 130 }} />
+                          ))}
+                        <col style={{ width: 108 }} />
+                      </colgroup>
+                      <thead>
+                        <tr>
                           {can('documents.write') && (
-                            <td className="row-selection-cell">
+                            <th className="row-selection-cell">
                               <input
                                 type="checkbox"
-                                aria-label={`Sélectionner la ligne ${row.sequence}`}
-                                disabled={!!busy || pendingCells.size > 0}
-                                checked={selectedRows.has(row.sequence)}
-                                onChange={(event) => {
-                                  setSelectedRows((previous) => {
-                                    const next = new Set(previous);
-                                    if (event.target.checked) next.add(row.sequence);
-                                    else next.delete(row.sequence);
-                                    return next;
-                                  });
-                                }}
+                                aria-label="Sélectionner toutes les lignes"
+                                title="Sélectionner les mouvements correspondant au filtre, toutes les pages"
+                                disabled={!!busy || pendingCells.size > 0 || !filteredRows.length}
+                                checked={
+                                  filteredRows.length > 0 &&
+                                  filteredRows.every((row) => selectedRows.has(row.sequence))
+                                }
+                                onChange={(event) =>
+                                  setSelectedRows(
+                                    event.target.checked
+                                      ? new Set(filteredRows.map((row) => row.sequence))
+                                      : new Set(),
+                                  )
+                                }
                               />
-                            </td>
+                            </th>
                           )}
-                          <td className="conversion-row-number">
-                            <div className="statement-order-cell">
-                              <span>{row.sequence}</span>
-                              {rowControls(row)}
-                            </div>
-                          </td>
-                          <td>{movementCell(row, 'date', 'Date opération', date(row.date))}</td>
-                          <td>
-                            {movementCell(row, 'valueDate', 'Date valeur', date(row.valueDate))}
-                          </td>
-                          <td className="conversion-description">
-                            {movementCell(
-                              row,
-                              'description',
-                              'Libellé',
-                              row.description || 'Non renseigné',
-                            )}
-                            {movementCell(
-                              row,
-                              'reference',
-                              'Référence',
-                              <span className="muted">
-                                {row.reference || 'Référence facultative'}
-                              </span>,
-                            )}
-                            {!!row.sourcePages?.length && (
-                              <small className="muted">
-                                À vérifier · page{row.sourcePages.length > 1 ? 's' : ''} source{' '}
-                                {row.sourcePages.join(', ')}
-                              </small>
-                            )}
-                          </td>
-                          <td className="conversion-money">
-                            {movementCell(row, 'debit', 'Débit', money(row.debit))}
-                          </td>
-                          <td className="conversion-money credit">
-                            {movementCell(row, 'credit', 'Crédit', money(row.credit))}
-                          </td>
-                          <td>
-                            {movementCell(
-                              row,
-                              'direction',
-                              'Sens',
-                              <span
-                                className={`conversion-direction ${row.direction?.toLowerCase() || 'unknown'}`}
-                              >
-                                {row.direction || '—'}
-                              </span>,
-                            )}
-                          </td>
-                          <td className="conversion-money">
-                            {movementCell(row, 'balance', 'Solde', money(row.balance))}
-                          </td>
-                          {extraColumns && (
-                            <>
-                              <td className="conversion-money">
-                                {movementCell(row, 'amount', 'Montant', money(row.amount))}
-                              </td>
-                              <td>{movementCell(row, 'currency', 'Devise', row.currency)}</td>
-                              <td>{movementCell(row, 'journal', 'Journal', row.journal)}</td>
-                              <td>
-                                {movementCell(row, 'account', 'Compte comptable', row.account)}
-                              </td>
-                              <td>{movementCell(row, 'analytic', 'Analytique', row.analytic)}</td>
-                              <td>
-                                {movementCell(row, 'recordType', 'Type de ligne', row.recordType)}
-                              </td>
-                            </>
-                          )}
-                          <td>
-                            <div className="row-inline-actions">
-                              <button
-                                className="conversion-row-edit"
-                                disabled={!!busy || !can('documents.write')}
-                                aria-label={`Corriger la transaction ${row.sequence}`}
-                                title="Modifier directement les cellules de la ligne"
-                                onClick={() => correct(row.sequence)}
-                              >
-                                <Pencil size={14} />
-                              </button>
-                              {can('documents.write') && (
-                                <button
-                                  className="conversion-row-edit danger-row-action"
-                                  disabled={!!busy || pendingCells.size > 0}
-                                  aria-label={`Supprimer la ligne ${row.sequence}`}
-                                  onClick={() => setDeletingRows(new Set([row.sequence]))}
-                                >
-                                  <Trash2 size={15} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
+                          <th>N° / ordre</th>
+                          <th>Date</th>
+                          <th>Date valeur</th>
+                          <th>Libellé</th>
+                          <th className="conversion-money">Débit</th>
+                          <th className="conversion-money">Crédit</th>
+                          <th>Sens</th>
+                          <th className="conversion-money">Solde</th>
+                          {extraColumns &&
+                            [
+                              'Montant',
+                              'Devise',
+                              'Journal',
+                              'Compte comptable',
+                              'Analytique',
+                              'Type de ligne',
+                            ].map((label) => <th key={label}>{label}</th>)}
+                          <th>
+                            <span className="sr-only">Correction</span>
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {visibleRows.map((row) => (
+                          <tr
+                            key={row.id || `sequence-${row.sequence}`}
+                            data-movement-id={row.id}
+                            data-drop-target={dropRow === row.id || undefined}
+                            {...rowDropEvents(row)}
+                            data-selected={selectedRows.has(row.sequence) || undefined}
+                            className={
+                              errors.some((e) => e.transactionSequence === row.sequence)
+                                ? 'has-error'
+                                : ''
+                            }
+                          >
+                            {can('documents.write') && (
+                              <td className="row-selection-cell">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Sélectionner la ligne ${row.sequence}`}
+                                  disabled={!!busy || pendingCells.size > 0}
+                                  checked={selectedRows.has(row.sequence)}
+                                  onChange={(event) => {
+                                    setSelectedRows((previous) => {
+                                      const next = new Set(previous);
+                                      if (event.target.checked) next.add(row.sequence);
+                                      else next.delete(row.sequence);
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </td>
+                            )}
+                            <td className="conversion-row-number">
+                              <div className="statement-order-cell">
+                                <span>{row.sequence}</span>
+                                {rowControls(row)}
+                              </div>
+                            </td>
+                            <td>{movementCell(row, 'date', 'Date opération', date(row.date))}</td>
+                            <td>
+                              {movementCell(row, 'valueDate', 'Date valeur', date(row.valueDate))}
+                            </td>
+                            <td className="conversion-description">
+                              {movementCell(
+                                row,
+                                'description',
+                                'Libellé',
+                                row.description || 'Non renseigné',
+                              )}
+                              {movementCell(
+                                row,
+                                'reference',
+                                'Référence',
+                                <span className="muted">
+                                  {row.reference || 'Référence facultative'}
+                                </span>,
+                              )}
+                              {!!row.sourcePages?.length && (
+                                <small className="muted">
+                                  À vérifier · page{row.sourcePages.length > 1 ? 's' : ''} source{' '}
+                                  {row.sourcePages.join(', ')}
+                                </small>
+                              )}
+                            </td>
+                            <td className="conversion-money">
+                              {movementCell(row, 'debit', 'Débit', money(row.debit))}
+                            </td>
+                            <td className="conversion-money credit">
+                              {movementCell(row, 'credit', 'Crédit', money(row.credit))}
+                            </td>
+                            <td>
+                              {movementCell(
+                                row,
+                                'direction',
+                                'Sens',
+                                <span
+                                  className={`conversion-direction ${row.direction?.toLowerCase() || 'unknown'}`}
+                                >
+                                  {row.direction || '—'}
+                                </span>,
+                              )}
+                            </td>
+                            <td className="conversion-money">
+                              {movementCell(row, 'balance', 'Solde', money(row.balance))}
+                            </td>
+                            {extraColumns && (
+                              <>
+                                <td className="conversion-money">
+                                  {movementCell(row, 'amount', 'Montant', money(row.amount))}
+                                </td>
+                                <td>{movementCell(row, 'currency', 'Devise', row.currency)}</td>
+                                <td>{movementCell(row, 'journal', 'Journal', row.journal)}</td>
+                                <td>
+                                  {movementCell(row, 'account', 'Compte comptable', row.account)}
+                                </td>
+                                <td>{movementCell(row, 'analytic', 'Analytique', row.analytic)}</td>
+                                <td>
+                                  {movementCell(row, 'recordType', 'Type de ligne', row.recordType)}
+                                </td>
+                              </>
+                            )}
+                            <td>
+                              <div className="row-inline-actions">
+                                <button
+                                  className="conversion-row-edit"
+                                  disabled={!!busy || !can('documents.write')}
+                                  aria-label={`Corriger la transaction ${row.sequence}`}
+                                  title="Modifier directement les cellules de la ligne"
+                                  onClick={() => correct(row.sequence)}
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                                {can('documents.write') && (
+                                  <button
+                                    className="conversion-row-edit danger-row-action"
+                                    disabled={!!busy || pendingCells.size > 0}
+                                    aria-label={`Supprimer la ligne ${row.sequence}`}
+                                    onClick={() => setDeletingRows(new Set([row.sequence]))}
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!filteredRows.length && (
+                    <p className="muted p-4" role="status">
+                      Aucun mouvement ne correspond au texte saisi.
+                    </p>
+                  )}
+                  {filteredRows.length > 50 && (
+                    <nav className="conversion-pagination" aria-label="Pagination des mouvements">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={movementPage === 1 || pendingCells.size > 0}
+                        onClick={() => setTransactionPage(movementPage - 1)}
+                      >
+                        Précédent
+                      </Button>
+                      <span>Page {movementPage}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={movementPage * 50 >= filteredRows.length || pendingCells.size > 0}
+                        onClick={() => setTransactionPage(movementPage + 1)}
+                      >
+                        Suivant
+                      </Button>
+                    </nav>
+                  )}
                 </div>
-                {!filteredRows.length && (
-                  <p className="muted p-4" role="status">
-                    Aucun mouvement ne correspond au texte saisi.
-                  </p>
-                )}
-                {filteredRows.length > 50 && (
-                  <nav className="conversion-pagination" aria-label="Pagination des mouvements">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={movementPage === 1 || pendingCells.size > 0}
-                      onClick={() => setTransactionPage(movementPage - 1)}
-                    >
-                      Précédent
-                    </Button>
-                    <span>Page {movementPage}</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={movementPage * 50 >= filteredRows.length || pendingCells.size > 0}
-                      onClick={() => setTransactionPage(movementPage + 1)}
-                    >
-                      Suivant
-                    </Button>
-                  </nav>
-                )}
               </div>
             )}
             {tab === 'preview' && (
@@ -1600,31 +1623,40 @@ export function StatementWorkspace({
                         </Button>
                       )}
                       <Button
+                        variant="outline"
+                        size="sm"
+                        permission="documents.export"
+                        disabled={!preview || !!busy || dirty || pendingCells.size > 0}
+                        onClick={() => {
+                          if (!preview) return;
+                          downloadExcel(
+                            exportFileName(
+                              downloadName.trim() ||
+                                (extractMode ? 'Alias-extrait-bancaire' : 'Alias-releve-bancaire'),
+                              'xlsx',
+                            ),
+                            preview.columns,
+                            preview.rows,
+                          );
+                          setNotice('Le fichier Excel a été téléchargé.');
+                        }}
+                      >
+                        <Download size={15} /> Télécharger Excel
+                      </Button>
+                      <Button
                         permission="documents.export"
                         size="sm"
                         disabled={!!busy || dirty || pendingCells.size > 0 || !model?.isActive}
-                        onClick={() => void download()}
+                        onClick={() =>
+                          accountingFlow && flowStage !== 4 ? setFlowStage(5) : void download()
+                        }
                       >
                         <Download size={16} />{' '}
-                        {busy === 'download' ? 'Préparation…' : 'Télécharger'}
-                      </Button>
-                      <Button
-                        permission="documents.export"
-                        size="sm"
-                        variant="outline"
-                        disabled={!!busy || dirty || pendingCells.size > 0}
-                        onClick={() => void downloadStructured()}
-                      >
-                        <Download size={16} /> PDF structuré
-                      </Button>
-                      <Button
-                        permission="documents.export"
-                        size="sm"
-                        variant="outline"
-                        disabled={!!busy || dirty || pendingCells.size > 0}
-                        onClick={() => void downloadStructured(true)}
-                      >
-                        Rapport de contrôle
+                        {busy === 'download'
+                          ? 'Préparation…'
+                          : accountingFlow && flowStage !== 4
+                            ? 'Paramétrer le résultat'
+                            : 'Télécharger'}
                       </Button>
                       {dirty && (
                         <Button
@@ -2014,9 +2046,9 @@ export function StatementWorkspace({
             )}
           </section>
         </div>
-        {detail.sourceFileName && (
+        {detail.sourceFileName && !sourceReviewOnly && (
           <StatementPdfPanel
-            extractId={extractMode ? activeExtract?.id : undefined}
+            extractId={activeExtract?.id}
             version={detail.version}
             unsaved={dirty || extractFilterDirty || pendingCells.size > 0}
             collapsed={!showPdfTools}
@@ -2026,327 +2058,434 @@ export function StatementWorkspace({
           />
         )}
       </div>
-      <aside className="conversion-export-panel" aria-label="Paramètres de l’export">
-        {templateEditor && (
-          <ExportTemplateEditor
-            initial={templateEditor.initial}
-            duplicate={templateEditor.duplicate}
-            defaultType={model?.type || 'SAGEX3'}
-            onClose={() => setTemplateEditor(null)}
-            onSaved={(saved) => {
-              setPreview(null);
-              setActionErrors([]);
-              setError('');
-              setNotice('Modèle enregistré. L’aperçu utilisera sa nouvelle configuration.');
-              onTemplatesChanged(saved.id);
-            }}
-          />
-        )}
-        <div className="conversion-export-header">
-          <span>
-            <FileOutput size={22} />
-          </span>
-          <div>
-            <h2>
-              {guided
-                ? flowStage === 4
-                  ? 'Votre fichier est prêt'
-                  : 'Contrôle du résultat'
-                : 'Préparer l’export'}
-            </h2>
-            <p>
-              {guided
-                ? flowStage === 4
-                  ? 'Choisissez le nom du fichier et téléchargez.'
-                  : 'Vérifiez les champs du modèle, puis validez.'
-                : 'Choisissez le format, vérifiez les données, puis téléchargez.'}
-            </p>
-          </div>
-        </div>
-        <div className="conversion-export-steps">
-          {guided ? (
-            <section className="export-step guided-model-summary" aria-label="Modèle choisi">
-              <span className="conversion-eyebrow">MODÈLE CHOISI</span>
-              <h3>{model?.name || 'Modèle indisponible'}</h3>
-              <p className="muted text-sm">
-                {model
-                  ? `${model.fields.length} colonnes · .${model.fileExtension}`
-                  : 'Choisissez un modèle actif pour continuer.'}
-              </p>
-              {flowStage !== 3 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!!busy || pendingCells.size > 0}
-                  onClick={onChooseTemplate}
-                >
-                  Changer de modèle
-                </Button>
-              )}
-            </section>
-          ) : (
-            <section className="export-step export-step-model" aria-label="Choisir le format">
-              <h3 className="export-step-title">
-                <span>1</span> Choisir le format
-              </h3>
-              <label className="conversion-template-label">
-                Modèle d’exportation
-                <select
-                  aria-label="Modèle d’exportation"
-                  className="ui-input mt-2"
-                  disabled={!!busy || pendingCells.size > 0}
-                  value={templateId}
-                  onChange={(e) => {
-                    if (textEdited && !exportTextSaved && !confirmDiscard(true)) return;
-                    onTemplate(e.target.value);
-                    setPreview(null);
-                    setEditedExportText(null);
-                    setExportTextSaved(false);
-
-                    setActionErrors([]);
-                    setError('');
-                  }}
-                >
-                  <option value="">Choisir un modèle…</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id} disabled={!t.isActive}>
-                      {t.name}
-                      {!t.isActive ? ' (inactif)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {can('templates.write') && (
-                <div className="conversion-template-actions">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!model || !!busy || dirty || pendingCells.size > 0}
-                    onClick={() => model && setTemplateEditor({ initial: model })}
-                  >
-                    <Settings2 size={14} />
-                    Configurer
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!model || !!busy || dirty || pendingCells.size > 0}
-                    onClick={() => model && setTemplateEditor({ initial: model, duplicate: true })}
-                  >
-                    <Copy size={14} />
-                    Dupliquer
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!!busy || dirty}
-                    onClick={() => setTemplateEditor({ initial: null })}
-                  >
-                    <Plus size={14} />
-                    Nouveau modèle
-                  </Button>
-                </div>
-              )}
-              {model ? (
-                <div className="conversion-format-card">
-                  <div className="conversion-format-badge">
-                    {model.type === 'CUSTOMCSV'
-                      ? 'CSV'
-                      : model.type === 'SAGEX3'
-                        ? 'SAGE X3'
-                        : 'SAGE 100'}
-                    <span>.{model.fileExtension}</span>
-                  </div>
-                  <p className="export-format-summary">
-                    {model.fields.length} colonnes · {separator(model.delimiter)} · .
-                    {model.fileExtension}
-                  </p>
-                  <details className="export-technical-details">
-                    <summary>Détails techniques du modèle</summary>
-                    <dl>
-                      <div>
-                        <dt>Encodage</dt>
-                        <dd>{model.encoding.toUpperCase()}</dd>
-                      </div>
-                      <div>
-                        <dt>Séparateur</dt>
-                        <dd>{separator(model.delimiter)}</dd>
-                      </div>
-                      <div>
-                        <dt>En-tête</dt>
-                        <dd>{model.type !== 'SAGE100' && model.includeHeader ? 'Oui' : 'Non'}</dd>
-                      </div>
-                      <div>
-                        <dt>Culture des nombres</dt>
-                        <dd>{model.numberCulture}</dd>
-                      </div>
-                      <div>
-                        <dt>Colonnes</dt>
-                        <dd>{model.fields.length}</dd>
-                      </div>
-                    </dl>
-                    <div className="conversion-column-chips">
-                      {model.fields
-                        .slice()
-                        .sort((a, b) => a.position - b.position)
-                        .map((field, index) => (
-                          <span
-                            key={`${field.position}-${index}`}
-                            title={`${field.sourceField}${field.required ? ' · obligatoire' : ''}`}
-                          >
-                            {field.fieldName}
-                          </span>
-                        ))}
-                    </div>
-                  </details>
-                </div>
-              ) : (
-                <div className="conversion-model-placeholder">
-                  <FileOutput size={28} />
-                  <p>Choisissez la structure du fichier à produire.</p>
-                </div>
-              )}
-              <details className="export-format-help">
-                <summary>Comment fonctionne ce format ?</summary>
-                {model?.type === 'SAGE100' && (
-                  <p className="conversion-x3-note">
-                    Sage 100 : une ligne par mouvement, montant absolu et sens D/C si la colonne
-                    utilise la source Direction. Le fichier commence directement par les valeurs,
-                    sans ligne d’en-tête. Les dates, colonnes et séparateur suivent le modèle
-                    sélectionné.
-                  </p>
-                )}
-                {model?.type === 'SAGEX3' && (
-                  <p className="conversion-x3-note">
-                    Sage X3 : solde initial (numéro 1), mouvements (2), solde final (3). Le numéro
-                    interne augmente à chaque ligne. Par défaut, la colonne Libellé est retirée des
-                    deux lignes de solde : 9 valeurs par solde, 10 par mouvement. Vous pouvez
-                    modifier ce choix dans le modèle. Sens : crédit 1, débit -1 ; solde positif ou
-                    nul -1, solde négatif 1. Numéro de relevé : RB + code banque + mois et année de
-                    la date d’opération. Attijariwafa : ATT ; Crédit Agricole : CA ; Crédit du Maroc
-                    : CDM.
-                  </p>
-                )}
-                {model?.type === 'CUSTOMCSV' && (
-                  <p className="conversion-x3-note">
-                    Un fichier CSV contient une ligne par mouvement. Les colonnes et leur ordre
-                    suivent le modèle choisi.
-                  </p>
-                )}
-                {!model && (
-                  <p className="muted text-xs mt-2">
-                    Sélectionnez un modèle pour consulter les règles de son format.
-                  </p>
-                )}
-              </details>
-              <Link className="conversion-manage-link" href="/templates">
-                Gérer les modèles <ArrowUpRight size={14} />
-              </Link>
-            </section>
+      {!sourceReviewOnly && (
+        <aside className="conversion-export-panel" aria-label="Paramètres de l’export">
+          {templateEditor && (
+            <ExportTemplateEditor
+              initial={templateEditor.initial}
+              duplicate={templateEditor.duplicate}
+              defaultType={model?.type || 'SAGEX3'}
+              onClose={() => setTemplateEditor(null)}
+              onSaved={(saved) => {
+                setPreview(null);
+                setActionErrors([]);
+                setError('');
+                setNotice('Modèle enregistré. L’aperçu utilisera sa nouvelle configuration.');
+                onTemplatesChanged(saved.id);
+              }}
+            />
           )}
-          {guided && flowStage === 3 ? (
-            <section
-              className="export-step guided-result-next"
-              aria-label="Terminer la vérification"
-            >
-              <Button
-                variant="outline"
-                disabled={!!busy || dirty || !model}
-                onClick={() => void showPreview()}
-              >
-                <Eye size={16} /> Actualiser le résultat
-              </Button>
-            </section>
-          ) : (
-            <section
-              className="export-step export-step-download"
-              aria-label="Télécharger le fichier"
-            >
-              {guided && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!!busy || pendingCells.size > 0}
-                  onClick={() => setFlowStage(3)}
-                >
-                  Revenir au résultat
-                </Button>
-              )}
-              <h3 className="export-step-title">
-                <span>{guided ? '4' : '3'}</span> Télécharger le fichier
-              </h3>
-              {model && can('documents.export') && (
-                <div className="space-y-3 mt-4 mb-4">
-                  <label className="conversion-template-label">
-                    Nom du fichier
-                    <input
-                      className="ui-input mt-2"
-                      value={downloadName}
-                      maxLength={180}
-                      placeholder="Nom automatique si laissé vide"
-                      disabled={!!busy || pendingCells.size > 0}
-                      onChange={(event) => setDownloadName(event.target.value)}
-                      aria-describedby="export-filename-help"
-                    />
-                  </label>
-                  <p id="export-filename-help" className="conversion-download-note">
-                    L’extension .{model.fileExtension} est ajoutée automatiquement. Laissez vide
-                    pour le nom automatique.
+          <div className="conversion-export-header">
+            <span>
+              <FileOutput size={22} />
+            </span>
+            <div>
+              <h2>
+                {guided
+                  ? flowStage === 4
+                    ? 'Votre fichier est prêt'
+                    : flowStage === 5
+                      ? 'Paramétrage du résultat'
+                      : 'Contrôle du résultat'
+                  : 'Préparer l’export'}
+              </h2>
+              <p>
+                {guided
+                  ? flowStage === 4
+                    ? 'Choisissez le nom du fichier et téléchargez.'
+                    : flowStage === 5
+                      ? 'Ajustez les données, les colonnes et les formats avant le téléchargement.'
+                      : 'Vérifiez les champs du modèle, puis validez.'
+                  : 'Choisissez le format, vérifiez les données, puis téléchargez.'}
+              </p>
+            </div>
+          </div>
+          <div className="conversion-export-steps">
+            {guided ? (
+              <section className="export-step guided-model-summary" aria-label="Modèle choisi">
+                <span className="conversion-eyebrow">MODÈLE CHOISI</span>
+                <h3>{model?.name || 'Modèle indisponible'}</h3>
+                <p className="muted text-sm">
+                  {model
+                    ? `${model.fields.length} colonnes · .${model.fileExtension}`
+                    : 'Choisissez un modèle actif pour continuer.'}
+                </p>
+                {accountingFlow && (
+                  <p className="muted text-sm">
+                    Journal : <strong>{detail.statement.journal || 'À vérifier'}</strong> · Compte
+                    général : {detail.statement.account || 'À vérifier'}
                   </p>
-                  {locationSupported ? (
-                    <label className="conversion-confirm">
-                      <input
-                        type="checkbox"
-                        checked={chooseLocation}
-                        disabled={!!busy || pendingCells.size > 0}
-                        onChange={(event) => setChooseLocation(event.target.checked)}
-                      />
-                      <span>Choisir l’emplacement avec « Enregistrer sous »</span>
-                    </label>
-                  ) : (
-                    <p className="conversion-download-note">
-                      Pour choisir le dossier, activez « Toujours demander où enregistrer les
-                      fichiers » dans les paramètres de téléchargement de votre navigateur.
+                )}
+                {accountingFlow && flowStage === 5 && (
+                  <div className="conversion-template-actions">
+                    <Button
+                      permission="templates.write"
+                      variant="outline"
+                      size="sm"
+                      disabled={!model || !!busy || dirty || pendingCells.size > 0}
+                      onClick={() => model && setTemplateEditor({ initial: model })}
+                    >
+                      <Settings2 size={14} /> Paramétrer le modèle
+                    </Button>
+                  </div>
+                )}
+                {flowStage !== 3 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!busy || pendingCells.size > 0}
+                    onClick={onChooseTemplate}
+                  >
+                    Changer de modèle
+                  </Button>
+                )}
+              </section>
+            ) : (
+              <section className="export-step export-step-model" aria-label="Choisir le format">
+                <h3 className="export-step-title">
+                  <span>1</span> Choisir le format
+                </h3>
+                <label className="conversion-template-label">
+                  Modèle d’exportation
+                  <select
+                    aria-label="Modèle d’exportation"
+                    className="ui-input mt-2"
+                    disabled={!!busy || pendingCells.size > 0}
+                    value={templateId}
+                    onChange={(e) => {
+                      if (textEdited && !exportTextSaved && !confirmDiscard(true)) return;
+                      if (e.target.value.startsWith('entry-output:')) {
+                        if (!confirmDiscard(dirty)) return;
+                        const params = new URLSearchParams({
+                          statementId: detail.id,
+                          type: 'accounting',
+                          step: 'model',
+                          outputTemplateId: e.target.value.slice('entry-output:'.length),
+                        });
+                        if (detail.clientId) params.set('clientId', detail.clientId);
+                        if (activeExtract?.id) params.set('extractId', activeExtract.id);
+                        router.push(`/conversions?${params}`, { scroll: true });
+                        return;
+                      }
+                      onTemplate(e.target.value);
+                      setPreview(null);
+                      setEditedExportText(null);
+                      setExportTextSaved(false);
+
+                      setActionErrors([]);
+                      setError('');
+                    }}
+                  >
+                    <option value="">Choisir un modèle…</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id} disabled={!t.isActive}>
+                        {t.name}
+                        {!t.isActive ? ' (inactif)' : ''}
+                      </option>
+                    ))}
+                    {!!entryFormats.data?.length && (
+                      <optgroup label="Écritures comptables — affichage et export">
+                        {entryFormats.data.map((t) => (
+                          <option key={t.id} value={`entry-output:${t.id}`} disabled={!t.active}>
+                            {t.name}
+                            {!t.active ? ' (inactif)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </label>
+                {entryFormats.loading && (
+                  <p className="muted text-sm" role="status">
+                    Chargement des formats d’écritures…
+                  </p>
+                )}
+                {entryFormats.error && (
+                  <p className="conversion-alert error" role="alert">
+                    {entryFormats.error}{' '}
+                    <Button variant="outline" size="sm" onClick={entryFormats.reload}>
+                      Recharger les formats d’écritures
+                    </Button>
+                  </p>
+                )}
+                {can('templates.write') && (
+                  <div className="conversion-template-actions">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!model || !!busy || dirty || pendingCells.size > 0}
+                      onClick={() => model && setTemplateEditor({ initial: model })}
+                    >
+                      <Settings2 size={14} />
+                      Configurer
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!model || !!busy || dirty || pendingCells.size > 0}
+                      onClick={() =>
+                        model && setTemplateEditor({ initial: model, duplicate: true })
+                      }
+                    >
+                      <Copy size={14} />
+                      Dupliquer
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!!busy || dirty}
+                      onClick={() => setTemplateEditor({ initial: null })}
+                    >
+                      <Plus size={14} />
+                      Nouveau modèle
+                    </Button>
+                  </div>
+                )}
+                {model ? (
+                  <div className="conversion-format-card">
+                    <div className="conversion-format-badge">
+                      {model.type === 'CUSTOMCSV'
+                        ? 'CSV'
+                        : model.type === 'SAGEX3' || model.type === 'SAGEX3ENTRIES'
+                          ? 'SAGE X3'
+                          : 'SAGE 100'}
+                      <span>.{model.fileExtension}</span>
+                    </div>
+                    <p className="export-format-summary">
+                      {model.fields.length} colonnes · {separator(model.delimiter)} · .
+                      {model.fileExtension}
+                    </p>
+                    <details className="export-technical-details">
+                      <summary>Détails techniques du modèle</summary>
+                      <dl>
+                        <div>
+                          <dt>Encodage</dt>
+                          <dd>{model.encoding.toUpperCase()}</dd>
+                        </div>
+                        <div>
+                          <dt>Séparateur</dt>
+                          <dd>{separator(model.delimiter)}</dd>
+                        </div>
+                        <div>
+                          <dt>En-tête</dt>
+                          <dd>{model.type !== 'SAGE100' && model.includeHeader ? 'Oui' : 'Non'}</dd>
+                        </div>
+                        <div>
+                          <dt>Culture des nombres</dt>
+                          <dd>{model.numberCulture}</dd>
+                        </div>
+                        <div>
+                          <dt>Colonnes</dt>
+                          <dd>{model.fields.length}</dd>
+                        </div>
+                      </dl>
+                      <div className="conversion-column-chips">
+                        {model.fields
+                          .slice()
+                          .sort((a, b) => a.position - b.position)
+                          .map((field, index) => (
+                            <span
+                              key={`${field.position}-${index}`}
+                              title={`${field.sourceField}${field.required ? ' · obligatoire' : ''}`}
+                            >
+                              {field.fieldName}
+                            </span>
+                          ))}
+                      </div>
+                    </details>
+                  </div>
+                ) : (
+                  <div className="conversion-model-placeholder">
+                    <FileOutput size={28} />
+                    <p>Choisissez la structure du fichier à produire.</p>
+                  </div>
+                )}
+                <details className="export-format-help">
+                  <summary>Comment fonctionne ce format ?</summary>
+                  {model && isAccountingTemplate(model.type) && (
+                    <p className="conversion-x3-note">
+                      Une ligne par mouvement bancaire, sans solde initial ou final. Le journal et
+                      le compte sont repris du compte bancaire associé. Les sources Débit comptable
+                      et Crédit comptable suivent la convention du relevé. Modifiez les colonnes,
+                      valeurs fixes et réglages depuis le modèle. Complétez les contreparties et
+                      vérifiez l’équilibre des pièces avant l’import dans votre dossier Sage.
                     </p>
                   )}
+                  {model?.type === 'SAGE100' && (
+                    <p className="conversion-x3-note">
+                      Sage 100 : une ligne par mouvement, montant absolu et sens D/C si la colonne
+                      utilise la source Direction. Le fichier commence directement par les valeurs,
+                      sans ligne d’en-tête. Les dates, colonnes et séparateur suivent le modèle
+                      sélectionné.
+                    </p>
+                  )}
+                  {model?.type === 'SAGEX3' && (
+                    <p className="conversion-x3-note">
+                      Sage X3 : solde initial (numéro 1), mouvements (2), solde final (3). Le numéro
+                      interne augmente à chaque ligne. Par défaut, la colonne Libellé est retirée
+                      des deux lignes de solde : 9 valeurs par solde, 10 par mouvement. Vous pouvez
+                      modifier ce choix dans le modèle. Sens : crédit 1, débit -1 ; solde positif ou
+                      nul -1, solde négatif 1. Numéro de relevé : RB + code banque + mois et année
+                      de la date d’opération. Attijariwafa : ATT ; Crédit Agricole : CA ; Crédit du
+                      Maroc : CDM.
+                    </p>
+                  )}
+                  {model?.type === 'CUSTOMCSV' && (
+                    <p className="conversion-x3-note">
+                      Un fichier CSV contient une ligne par mouvement. Les colonnes et leur ordre
+                      suivent le modèle choisi.
+                    </p>
+                  )}
+                  {!model && (
+                    <p className="muted text-xs mt-2">
+                      Sélectionnez un modèle pour consulter les règles de son format.
+                    </p>
+                  )}
+                </details>
+                <Link className="conversion-manage-link" href="/templates">
+                  Gérer les modèles <ArrowUpRight size={14} />
+                </Link>
+              </section>
+            )}
+            {accountingFlow && flowStage === 5 ? (
+              <section className="export-step" aria-label="Paramétrer le résultat">
+                <h3 className="export-step-title">Paramétrer le résultat</h3>
+                <p className="muted text-sm">
+                  Ajustez les données et les colonnes dans le résultat, ou les formats dans le
+                  modèle. Enregistrez les corrections avant de continuer.
+                </p>
+                <div className="conversion-template-actions">
+                  <Button
+                    variant="outline"
+                    disabled={!!busy || pendingCells.size > 0}
+                    onClick={() => setFlowStage(3)}
+                  >
+                    Revenir au résultat
+                  </Button>
+                  <Button
+                    disabled={!!busy || dirty || pendingCells.size > 0 || !model?.isActive}
+                    onClick={() => {
+                      setFlowStage(4);
+                      flowHeaderRef.current?.scrollIntoView({ block: 'start' });
+                    }}
+                  >
+                    Continuer vers le téléchargement
+                  </Button>
                 </div>
-              )}
-              <div className="conversion-export-actions">
+              </section>
+            ) : guided && flowStage === 3 ? (
+              <section
+                className="export-step guided-result-next"
+                aria-label="Terminer la vérification"
+              >
                 <Button
                   variant="outline"
-                  disabled={!model || !!busy || dirty || pendingCells.size > 0}
+                  disabled={!!busy || dirty || !model}
                   onClick={() => void showPreview()}
                 >
-                  <Eye size={17} />
-                  {busy === 'preview' ? 'Vérification…' : 'Aperçu'}
+                  <Eye size={16} /> Actualiser le résultat
                 </Button>
                 <Button
-                  disabled={!model?.isActive || !!busy || dirty || pendingCells.size > 0}
-                  permission="documents.export"
-                  onClick={() => void download()}
+                  disabled={!!busy || dirty || pendingCells.size > 0 || !model?.isActive}
+                  onClick={() => {
+                    setFlowStage(accountingFlow ? 5 : 4);
+                    flowHeaderRef.current?.scrollIntoView({ block: 'start' });
+                  }}
                 >
-                  {busy === 'download' ? (
-                    <LoaderCircle size={17} className="animate-spin" />
-                  ) : (
-                    <Download size={17} />
-                  )}
-                  {busy === 'download' ? 'Préparation…' : 'Télécharger avec erreurs'}
+                  {accountingFlow ? 'Paramétrer le résultat' : 'Continuer vers le téléchargement'}
                 </Button>
-              </div>
-              <p className="conversion-download-note">
-                {!can('documents.export')
-                  ? 'Votre profil ne dispose pas de la permission de télécharger les exports.'
-                  : !model
-                    ? 'Sélectionnez un modèle Sage X3, Sage 100 ou CSV pour préparer votre fichier.'
-                    : 'Le fichier sera archivé avec la mention « à vérifier ». Les diagnostics et le statut du relevé restent conservés.'}
-              </p>
-            </section>
-          )}
-        </div>
-      </aside>
+              </section>
+            ) : (
+              <section
+                className="export-step export-step-download"
+                aria-label="Télécharger le fichier"
+              >
+                {guided && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!busy || pendingCells.size > 0}
+                    onClick={() => setFlowStage(3)}
+                  >
+                    Revenir au résultat
+                  </Button>
+                )}
+                <h3 className="export-step-title">
+                  <span>{guided ? '4' : '3'}</span> Télécharger le fichier
+                </h3>
+                {model && can('documents.export') && (
+                  <div className="space-y-3 mt-4 mb-4">
+                    <label className="conversion-template-label">
+                      Nom du fichier
+                      <input
+                        className="ui-input mt-2"
+                        value={downloadName}
+                        maxLength={180}
+                        placeholder="Nom automatique si laissé vide"
+                        disabled={!!busy || pendingCells.size > 0}
+                        onChange={(event) => setDownloadName(event.target.value)}
+                        aria-describedby="export-filename-help"
+                      />
+                    </label>
+                    <p id="export-filename-help" className="conversion-download-note">
+                      L’extension .{model.fileExtension} est ajoutée automatiquement. Laissez vide
+                      pour le nom automatique.
+                    </p>
+                    {locationSupported ? (
+                      <label className="conversion-confirm">
+                        <input
+                          type="checkbox"
+                          checked={chooseLocation}
+                          disabled={!!busy || pendingCells.size > 0}
+                          onChange={(event) => setChooseLocation(event.target.checked)}
+                        />
+                        <span>Choisir l’emplacement avec « Enregistrer sous »</span>
+                      </label>
+                    ) : (
+                      <p className="conversion-download-note">
+                        Pour choisir le dossier, activez « Toujours demander où enregistrer les
+                        fichiers » dans les paramètres de téléchargement de votre navigateur.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="conversion-export-actions">
+                  <Button
+                    variant="outline"
+                    disabled={!model || !!busy || dirty || pendingCells.size > 0}
+                    onClick={() => void showPreview()}
+                  >
+                    <Eye size={17} />
+                    {busy === 'preview' ? 'Vérification…' : 'Aperçu'}
+                  </Button>
+                  <Button
+                    disabled={!model?.isActive || !!busy || dirty || pendingCells.size > 0}
+                    permission="documents.export"
+                    onClick={() => void download()}
+                  >
+                    {busy === 'download' ? (
+                      <LoaderCircle size={17} className="animate-spin" />
+                    ) : (
+                      <Download size={17} />
+                    )}
+                    {busy === 'download' ? 'Préparation…' : 'Télécharger avec erreurs'}
+                  </Button>
+                </div>
+                <p className="conversion-download-note">
+                  {!can('documents.export')
+                    ? 'Votre profil ne dispose pas de la permission de télécharger les exports.'
+                    : !model
+                      ? 'Sélectionnez un modèle Sage X3, Sage 100 ou CSV pour préparer votre fichier.'
+                      : 'Le fichier sera archivé avec la mention « à vérifier ». Les diagnostics et le statut du relevé restent conservés.'}
+                </p>
+              </section>
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

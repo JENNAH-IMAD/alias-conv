@@ -48,9 +48,9 @@ public sealed class StatementValidator
             if (t.Amount.HasValue && magnitude.HasValue && t.Amount != magnitude)
                 Error("AMOUNT_MISMATCH", "Le montant fourni diffère du débit/crédit ; aucune correction automatique.", "Amount");
             if (!t.Date.HasValue)
-                warnings.Add(new("DATE_MISSING", "Date d’opération manquante.", t.Sequence, null, "Date"));
+                errors.Add(new("DATE_MISSING", "Date d’opération manquante.", t.Sequence, null, "Date"));
             if (t.Date.HasValue && ((s.PeriodStart.HasValue && t.Date < s.PeriodStart) || (s.PeriodEnd.HasValue && t.Date > s.PeriodEnd)))
-                warnings.Add(new("DATE_OUTSIDE_PERIOD", "Date d’opération hors période.", t.Sequence, null, "Date"));
+                errors.Add(new("DATE_OUTSIDE_PERIOD", "Date d’opération hors période : vérifiez-la sur le PDF original.", t.Sequence, null, "Date"));
             if (t.Currency is { Length: > 0 } && (t.Currency.Length != 3 || !t.Currency.All(char.IsAsciiLetterUpper)))
                 Error("INVALID_CURRENCY", "Devise de transaction invalide.", "Currency");
             if (t.Currency is { Length: > 0 } && t.Currency != s.Currency)
@@ -71,7 +71,19 @@ public sealed class StatementValidator
         if (s.OpeningBalance.HasValue && s.ClosingBalance.HasValue)
         {
             if (string.IsNullOrEmpty(s.BalanceConvention))
+            {
                 warnings.Add(new("BALANCE_CONVENTION_MISSING", "Précisez la convention de signe pour contrôler les soldes."));
+                if (valid.Count > 0 && valid.All(t => t.Debit.HasValue != t.Credit.HasValue))
+                {
+                    try
+                    {
+                        if (s.OpeningBalance + credit - debit != s.ClosingBalance
+                            && s.OpeningBalance + debit - credit != s.ClosingBalance)
+                            errors.Add(new("BALANCE_MISMATCH", "Les mouvements et les soldes ne concordent selon aucune des deux conventions de signe. Vérifiez les valeurs et le document source.", SourceField: "ClosingBalance"));
+                    }
+                    catch (OverflowException) { errors.Add(new("NUMERIC_OVERFLOW", "Montants trop grands pour contrôler les soldes.")); }
+                }
+            }
             else if (valid.Any(t => !t.Debit.HasValue && !t.Credit.HasValue))
                 warnings.Add(new("BALANCE_CHECK_UNAVAILABLE", "Certains mouvements n’ont ni débit ni crédit ; le rapprochement des soldes est incomplet."));
             else

@@ -29,6 +29,12 @@ public sealed class AuthController(WorkspaceUserService users, AppDbContext db) 
     public async Task<UserDto> Setup(SetupInput input, CancellationToken ct) => await SignIn(await users.Setup(input, ct), ct);
     [HttpPost("login"), AllowAnonymous, EnableRateLimiting("authentication")]
     public async Task<UserDto> Login(LoginInput input, CancellationToken ct) => await SignIn(await users.Login(input, ct), ct);
+    [HttpPut("profile")]
+    public async Task<UserDto> UpdateProfile(UserProfileInput input, CancellationToken ct)
+    {
+        var id = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        return await SignIn(await users.UpdateProfile(id, input, ct), ct);
+    }
     private async Task<UserDto> SignIn(WorkspaceUser user, CancellationToken ct)
     {
         var expiry = DateTime.UtcNow.AddHours(8);

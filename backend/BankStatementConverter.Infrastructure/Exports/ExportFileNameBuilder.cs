@@ -24,6 +24,7 @@ public sealed class ExportFileNameBuilder
             bankCode = "Alias";
         var period = statement.PeriodStart?.ToString("yyyy-MM", CultureInfo.InvariantCulture) ?? "sans-periode";
         // No user-supplied label or account identifier can introduce a path or disclose a complete account.
-        return $"{bankCode}_{suffix}_{period}_{Safe(template.Type)}.{(template.FileExtension == "csv" ? "csv" : "txt")}";
+        var extension = template.FileExtension is "csv" or "tsv" ? template.FileExtension : "txt";
+        return $"{bankCode}_{suffix}_{period}_{Safe(template.Type)}.{extension}";
     }
 }

@@ -38,29 +38,17 @@ ne supprimerait pas ces plafonds et ne garantirait pas une extraction universell
    suffisamment larges et hautes ; les petits logos restent ignorés. Ce repère est
    une heuristique : il ne comprend pas le contenu de l'image et peut manquer une
    très petite zone scannée ou demander une lecture inutile d'une grande illustration.
-2. **Lecture sélective.** PaddleOCR reçoit les pages suspectes ; l'assistance gratuite
-   reçoit les pages qui restent non résolues. La pagination d'origine est conservée.
-3. **Contexte géométrique.** OpenRouter reçoit le PDF de la page et le texte local
-   regroupé par ligne et position. La lecture Paddle est transmise quand elle est
-   disponible, même si son interprétation bancaire était incomplète. Le contexte est
-   traité comme une donnée non fiable. Un contexte dépassant 64 000 caractères est
-   explicitement signalé comme tronqué ; la page PDF complète reste jointe.
-4. **Cache cohérent.** L'empreinte du contexte local entre dans la clé du cache IA.
-   Une nouvelle lecture OCR ne réutilise pas une réponse calculée avec un ancien
-   contexte. Le cache IA reste borné en mémoire et isolé par clé OpenRouter. Le service
-   Paddle conserve aussi ses pages réussies pendant dix minutes, dans un cache mémoire
-   de 32 Mo indexé par le PDF exact, la page et le modèle. Aucune nouvelle mémoire de
-   relevés sur disque n'a été ajoutée.
-5. **Provenance des mouvements.** Les parseurs natif et structuré conservent les pages
+2. **Lecture sélective.** PaddleOCR reçoit les pages suspectes. Les pages restant
+   non résolues sont signalées pour contrôle. La pagination d'origine est conservée.
+3. **Lecture sans réutilisation de résultats.** Chaque import repart du PDF original.
+   Seuls les modèles OCR chargés sont réutilisés en mémoire.
+4. **Provenance des mouvements.** Les parseurs natif et structuré conservent les pages
    sources, y compris les libellés poursuivis sur la page suivante dans les tableaux.
-   Des coordonnées de cellules ne sont pas inventées pour une transcription IA.
-6. **Montants étayés.** Les montants IA sont comparés à la lecture locale indépendante.
-   Une absence de correspondance crée une alerte, sans réécriture automatique. Une
-   correspondance textuelle seule ne prouve ni la bonne ligne ni la bonne colonne.
-7. **Protection de l'exhaustivité.** Une image importante non résolue, une page illisible
+   Les coordonnées sont issues de la lecture du document.
+5. **Protection de l'exhaustivité.** Une image importante non résolue, une page illisible
    ou une omission détectée empêche la validation automatique du relevé. Les contrôles
    comptables et la comparaison au PDF original restent nécessaires.
-8. **Texte source lisible.** Les mots natifs sont regroupés en lignes avec des tabulations
+6. **Texte source lisible.** Les mots natifs sont regroupés en lignes avec des tabulations
    entre positions ; un montant identique dans deux colonnes reste présent deux fois.
 
 Les règles de reconnaissance des factures, l'identité des fournisseurs et les montants
@@ -72,9 +60,8 @@ de leur base ne sont pas repris dans les relevés. Les exports Sage/CSV restent 
 Conformément au choix de l'utilisateur :
 
 - retrait du plafond de 200 pages dans le lecteur PDF et le service OCR local ;
-- retrait du plafond de 8 pages transmises à l'assistance IA ;
 - suppression des délais automatiques de conversion par défaut, dans les moteurs
-  locaux, AI Studio, OpenRouter et le parcours hybride ;
+  locaux, AI Studio et le parcours hybride ;
 - relais HTTP dédié à l'import PDF, sans minuterie de réponse du proxy de réécriture ;
 - maintien de l'annulation utilisateur, propagée au relais et aux moteurs ;
 - suppression du plafond PDF de 20 Mo, maintien de la file multiutilisateur et des protections de
@@ -82,7 +69,7 @@ Conformément au choix de l'utilisateur :
 - maintien des quotas, de la disponibilité et des tailles de contexte imposés par
   les fournisseurs. Aucun modèle payant n'est ajouté.
 
-Les paramètres de durée et `Hybrid:MaxAiPages` acceptent `0` pour désactiver le plafond.
+Les paramètres de durée acceptent `0` pour désactiver le plafond.
 Une valeur positive reste possible pour un déploiement qui souhaite en fixer un.
 Le délai d'admission dans la file (`Ocr:QueueWaitSeconds`) concerne l'attente avant
 conversion et reste distinct de la durée de conversion. Un proxy ou hébergeur externe
@@ -95,8 +82,7 @@ ou au redémarrage du serveur ; cela ne fait pas partie de cette modification.
 
 Les tests ajoutés couvrent les PDF entièrement scannés, une page mixte avec mouvements
 natifs déjà équilibrés, les images non lues, les petits logos, 201 pages, plus de huit
-pages assistées, l'annulation sans délai, le contexte OCR envoyé à l'IA, l'invalidation
-du cache après changement de contexte, les montants non étayés et le relais HTTP.
+pages OCR, l'annulation sans délai et le relais HTTP.
 Les tests des moteurs externes utilisent des réponses simulées : ils ne constituent
 pas une mesure de performance ni une preuve d'exactitude sur tous les relevés réels.
 
@@ -112,7 +98,7 @@ parce qu'elle contient beaucoup de mots.
 La lecture locale PP-OCRv6 small a retrouvé 50 mouvements (36 et 14), sans libellé vide
 ni montant absent/ambigu, en 67 973 ms hors démarrage du moteur. Les 50 débits/crédits
 ont été comparés aux deux pages rendues, avec vérification agrandie pour deux montants
-qui prêtaient à confusion à faible résolution. Aucun appel OpenRouter n'a été nécessaire.
+qui prêtaient à confusion à faible résolution. La lecture est restée locale.
 Le compte et son titulaire sont reconnus dans la carte de compte en haut de la page.
 Les signes et suffixes monétaires sont interprétés selon les colonnes débit/crédit.
 Une seconde mesure après activation du cache a donné 66 668 ms à froid, puis 476 ms

@@ -139,7 +139,8 @@ public static class StatementExportPreparation
             if (candidate.Date.HasValue)
             {
                 var datedKey = (candidate.Date.Value, amount);
-                if (!byDateAndAmount.TryGetValue(datedKey, out var dated)) byDateAndAmount[datedKey] = dated = [];
+                if (!byDateAndAmount.TryGetValue(datedKey, out var dated))
+                    byDateAndAmount[datedKey] = dated = [];
                 dated.Add(index);
             }
         }

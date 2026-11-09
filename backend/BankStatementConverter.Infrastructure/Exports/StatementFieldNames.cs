@@ -23,8 +23,22 @@ public static class StatementFieldNames
     };
     public static string? Column(string text)
     {
+        var arabic = Regex.Replace(text.Normalize(NormalizationForm.FormD), @"[\p{Mn}ـ]", "");
+        arabic = Regex.Replace(arabic, @"[^\p{L}\p{N}]+", " ").Trim();
+        var arabicField = arabic switch
+        {
+            "تاريخ العملية" or "تاريخ العمليات" or "تاريخ القيد" or "تاريخ التسجيل" or "التاريخ" or "تاريخ" => "Date",
+            "تاريخ القيمة" or "القيمة" => "ValueDate",
+            "بيان العملية" or "بيان العمليات" or "تفاصيل العملية" or "البيان" or "العملية" => "Description",
+            "مدين" or "المدين" or "مبلغ مدين" or "السحب" => "Debit",
+            "داين" or "الداين" or "مبلغ داين" or "الايداع" => "Credit",
+            "المرجع" or "مرجع" or "رقم المرجع" => "Reference",
+            _ => null
+        };
+        if (arabicField != null)
+            return arabicField;
         var label = Fold(Regex.Replace(text, @"\\text\s*\{([^}]*)\}", "$1"));
-        if (label is "DATES OPERATION" or "DATES OPER")
+        if (label is "DATES OPERATION" or "DATES OPER" or "OPER")
             return "Date";
         if (label is "DATES VALEUR" or "DATES DATE VALEUR")
             return "ValueDate";
@@ -32,7 +46,14 @@ public static class StatementFieldNames
             return "Description";
         // Currency decorations do not change the meaning of a column.
         label = Regex.Replace(label, @"\s+(?:EN\s+)?(MAD|DH|DHS|EUR|USD|GBP|CHF|DIRHAMS|DIRHAM|EUROS)$", "");
-        return Names.FirstOrDefault(pair => pair.Value.Contains(label)).Key;
+        var exact = Names.FirstOrDefault(pair => pair.Value.Contains(label)).Key;
+        if (exact != null)
+            return exact;
+        // OCR can join caption words: NATUREOPERATION, DATEVALEUR, MONTANTDEBIT.
+        // Accept only an unambiguous complete alias, never a substring of a narrative.
+        var compact = label.Replace(" ", "");
+        var matches = Names.Where(pair => pair.Value.Any(alias => alias.Replace(" ", "") == compact)).Select(pair => pair.Key).ToArray();
+        return matches.Length == 1 ? matches[0] : null;
     }
     public static bool IsBalance(string text) => Regex.IsMatch(Fold(text), @"\b(SOLDE|BALANCE)\b");
     // Available funds may include an overdraft facility or pending operations.
