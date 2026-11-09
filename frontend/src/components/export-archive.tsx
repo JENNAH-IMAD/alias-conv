@@ -90,9 +90,6 @@ export function ExportArchive({
             Fichiers conservés avec le modèle et la version utilisés lors du téléchargement.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={history.reload}>
-          Actualiser
-        </Button>
       </div>
       <LoadState
         loading={history.loading}

@@ -20,7 +20,6 @@ import {
   X,
   ChevronRight,
   Plus,
-  RefreshCw,
   UsersRound,
   LockKeyhole,
   ScanText,
@@ -333,17 +332,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="truncate font-medium">{active?.label || 'Alias'}</span>
           </nav>
           <div className="topbar-actions flex shrink-0 items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Actualiser la page"
-              title="Actualiser la page"
-              onClick={() => {
-                if (confirmDiscard(hasUnsavedChanges())) window.location.reload();
-              }}
-            >
-              <RefreshCw size={17} />
-            </Button>
             <Can permission="documents.write">
               <Button asChild className="primary-action navbar-import-button">
                 <Link

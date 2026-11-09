@@ -1,10 +1,9 @@
 ﻿'use client';
-import { Fragment, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, Suspense, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
   History,
-  RefreshCw,
   ArrowUpRight,
   FileText,
   UserRound,
@@ -184,13 +183,6 @@ function HistoryEvent({
   );
 }
 export default function HistoryPage() {
-  const [loading, setLoading] = useState(true);
-  const reloadRef = useRef<() => void>(() => {});
-  const updateControls = useCallback((isLoading: boolean, reload: () => void) => {
-    reloadRef.current = reload;
-    setLoading(isLoading);
-  }, []);
-
   return (
     <div className="ui-page history-page">
       <PageHeader
@@ -198,23 +190,9 @@ export default function HistoryPage() {
         eyebrow="Journal d’activité"
         title="Historique"
         description="Suivez vos relevés, vos conversions et les changements de modèles."
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={loading}
-            onClick={() => {
-              setLoading(true);
-              reloadRef.current();
-            }}
-          >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-            Actualiser
-          </Button>
-        }
       />
       <Suspense fallback={<HistoryJournalSkeleton />}>
-        <HistoryContent onControls={updateControls} />
+        <HistoryContent />
       </Suspense>
     </div>
   );
@@ -263,22 +241,16 @@ function HistoryJournalSkeleton() {
     </>
   );
 }
-function HistoryContent({ onControls }: { onControls: (loading: boolean, reload: () => void) => void }) {
+function HistoryContent() {
   const params = useSearchParams();
   const scope: Record<string, string> = {};
   for (const key of ['statementId', 'clientId', 'bankAccountId']) {
     const value = params.get(key);
     if (value) scope[key] = value;
   }
-  return <HistoryJournal key={JSON.stringify(scope)} scope={scope} onControls={onControls} />;
+  return <HistoryJournal key={JSON.stringify(scope)} scope={scope} />;
 }
-function HistoryJournal({
-  scope,
-  onControls,
-}: {
-  scope: Record<string, string>;
-  onControls: (loading: boolean, reload: () => void) => void;
-}) {
+function HistoryJournal({ scope }: { scope: Record<string, string> }) {
   const [page, setPage] = useState(1);
   const [profilePage, setProfilePage] = useState(1);
   const [tab, setTab] = useState<'statements' | 'profiles'>('statements');
@@ -319,15 +291,6 @@ function HistoryJournal({
       : '');
   const historyData = historyError ? null : history.data;
   const active = tab === 'statements' ? { ...history, data: historyData } : profiles;
-  const reloadHistory = history.reload;
-  const reloadProfiles = profiles.reload;
-  const reload = useCallback(() => {
-    reloadHistory();
-    reloadProfiles();
-  }, [reloadHistory, reloadProfiles]);
-  useEffect(() => {
-    onControls(history.loading || profiles.loading, reload);
-  }, [history.loading, onControls, profiles.loading, reload]);
   function reset() {
     setSearch('');
     setTerm('');

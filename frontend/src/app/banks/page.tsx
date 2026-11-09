@@ -2,7 +2,7 @@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ClientAvatar, ClientPhotoEditor } from '@/components/client-photo';
-import { Camera, Landmark, Plus, RefreshCw, Pencil, Trash2, ArrowUpRight } from 'lucide-react';
+import { Camera, Landmark, Plus, Pencil, Trash2, ArrowUpRight } from 'lucide-react';
 import { Pagination } from '@/components/ui/pagination';
 import { PageHeader } from '@/components/page-header';
 import { BankingSectionNavigation } from '@/components/banking-section-navigation';
@@ -128,9 +128,6 @@ export default function BanksPage() {
             <option value="code">Code</option>
           </select>
         </label>
-        <Button variant="outline" onClick={reload} disabled={loading}>
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Actualiser
-        </Button>
       </section>
       <LoadState loading={loading} error="" />
       {error && (
